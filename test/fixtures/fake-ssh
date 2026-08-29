@@ -1,0 +1,135 @@
+#!/bin/sh
+# test/fixtures/fake-ssh — a stand-in for the ssh client.
+#
+# nat drives OpenSSH as a subprocess, so the whole transport can be exercised
+# offline by pointing NAT_SSH_BIN at this script. It speaks the parts of the ssh
+# command line nat uses: the control master (-M -N), `-O exit`, exec commands
+# (after `--`), and an interactive `-tt` session that echoes what it is sent and
+# answers with a prompt — the behaviour the session state machine reads.
+#
+# Environment:
+#   NAT_FAKE_DIR         directory of canned replies (cmd_<slug> files)
+#   NAT_FAKE_PROMPT      the shell prompt to print          (default "dev1$ ")
+#   NAT_FAKE_SONIC_PROMPT  prompt after `sonic-cli`         (default "sonic1# ")
+#   NAT_FAKE_NESTED_PROMPT prompt after a nested `ssh ...`   (default "target# ")
+#   NAT_FAKE_BANNER      login banner for -tt sessions
+#   NAT_FAKE_AUTH_FAIL   set to 1 to refuse authentication
+#   NAT_FAKE_PASSWORD    when set, the askpass helper must produce this value
+#   NAT_FAKE_LOG         append each invocation's argv to this file
+set -u
+
+CR=$(printf '\r')
+prompt=${NAT_FAKE_PROMPT-'dev1$ '}
+sonic_prompt=${NAT_FAKE_SONIC_PROMPT-'sonic1# '}
+nested_prompt=${NAT_FAKE_NESTED_PROMPT-'target# '}
+replies=${NAT_FAKE_DIR-}
+
+if [ -n "${NAT_FAKE_LOG-}" ]; then
+  printf '%s\n' "$*" >>"$NAT_FAKE_LOG"
+fi
+
+master=0
+tty_mode=0
+control_path=
+ctl_command=
+destination=
+command_args=
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --) shift; command_args="$*"; break ;;
+    -M) master=1 ;;
+    -N) : ;;
+    -tt|-t|-q) [ "$1" = "-tt" ] && tty_mode=1 ;;
+    -O) shift; ctl_command="${1-}" ;;
+    -o) shift
+        case "${1-}" in
+          # OpenSSH uses the first obtained value for ControlPath.
+          ControlPath=*) [ -n "$control_path" ] || control_path="${1#ControlPath=}" ;;
+        esac ;;
+    -F|-p|-i|-J|-l|-b|-c|-E) shift ;;
+    -*) : ;;
+    *) [ -z "$destination" ] && destination="$1" ;;
+  esac
+  shift
+done
+
+# Authentication happens once, before anything else, exactly like the real
+# client: a refused login writes ssh's own message and exits 255.
+authenticate() {
+  if [ -n "${NAT_FAKE_PASSWORD-}" ]; then
+    got=""
+    if [ -n "${SSH_ASKPASS-}" ] && [ -x "${SSH_ASKPASS-}" ]; then
+      got=$("$SSH_ASKPASS" "$destination's password: " 2>/dev/null)
+    fi
+    if [ "$got" != "$NAT_FAKE_PASSWORD" ]; then
+      echo "$destination: Permission denied (publickey,password)." >&2
+      exit 255
+    fi
+  fi
+  if [ "${NAT_FAKE_AUTH_FAIL-}" = "1" ]; then
+    echo "$destination: Permission denied (publickey,password)." >&2
+    exit 255
+  fi
+}
+
+if [ -n "$ctl_command" ]; then
+  [ -n "$control_path" ] && rm -f "$control_path"
+  exit 0
+fi
+
+authenticate
+
+slug() {
+  printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9' '_'
+}
+
+reply() {
+  file="$replies/cmd_$(slug "$1")"
+  if [ -n "$replies" ] && [ -f "$file" ]; then
+    cat "$file"
+    return 0
+  fi
+  printf 'sh: 1: %s: not found\n' "$1" >&2
+  return 127
+}
+
+if [ "$master" = "1" ]; then
+  [ -n "$control_path" ] && : >"$control_path"
+  # Hold the "connection" open until nat tears it down.
+  while :; do sleep 1; done
+fi
+
+if [ -n "$command_args" ]; then
+  # Test-only long-running exec path: a shell-builtin loop means killing this
+  # process closes its pipes immediately (there is no grandchild to inherit).
+  if [ "${NAT_FAKE_HOLD_EXEC-}" = "1" ]; then
+    while :; do :; done
+  fi
+  reply "$command_args"
+  exit $?
+fi
+
+if [ "$tty_mode" = "1" ]; then
+  # A terminal session: banner, prompt, then echo-and-answer per line. Line
+  # endings are CRLF because a remote pty echoes them that way.
+  printf '%s\r\n' "${NAT_FAKE_BANNER-Linux dev1 6.1.0 x86_64}"
+  printf '%s' "$prompt"
+  while IFS= read -r line; do
+    line=${line%"$CR"}
+    printf '%s\r\n' "$line"
+    case "$line" in
+      exit|quit|logout) exit 0 ;;
+      "") printf '%s' "$prompt"; continue ;;
+      sonic-cli) prompt="$sonic_prompt"; printf '%s' "$prompt"; continue ;;
+      "terminal length 0"|"terminal width 511"|stty*|enable) printf '%s' "$prompt"; continue ;;
+      # A nested `ssh <target>` typed into this session — the --jump-shell path.
+      ssh\ *) prompt="$nested_prompt"; printf '%s' "$prompt"; continue ;;
+    esac
+    reply "$line" 2>&1 | while IFS= read -r out; do printf '%s\r\n' "$out"; done
+    printf '%s' "$prompt"
+  done
+  exit 0
+fi
+
+exit 0

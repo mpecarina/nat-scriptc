@@ -1,0 +1,39 @@
+{
+  "name": "nat-scriptc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Network Automation Toolkit — a natively compiled CLI for running commands across SSH hosts.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "nat": "dist/nat"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node cli/nat.ts",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "coverage": "scriptc coverage cli/nat.ts",
+    "build": "node scripts/build.mjs",
+    "emit": "node scripts/emit.mjs all",
+    "emit:c": "node scripts/emit.mjs c",
+    "emit:llvm": "node scripts/emit.mjs llvm",
+    "emit:ir": "node scripts/emit.mjs ir",
+    "build:c": "node scripts/build-c.mjs",
+    "build:cross": "node scripts/build-cross.mjs"
+  },
+  "devDependencies": {
+    "scriptc": "0.0.35",
+    "typescript": "5.9.3"
+  },
+  "files": [
+    "cli",
+    "src",
+    "scripts",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ]
+}

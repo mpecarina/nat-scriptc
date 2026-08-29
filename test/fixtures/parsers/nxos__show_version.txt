@@ -1,0 +1,11 @@
+Cisco Nexus Operating System (NX-OS) Software
+Software
+  BIOS: version 08.38
+  NXOS: version 9.3(10)
+  NXOS image file is: bootflash:///nxos.9.3.10.bin
+
+Hardware
+  cisco Nexus9000 C9336C-FX2 Chassis
+  Device name: nexus1
+  Kernel uptime is 3 day(s), 1 hour(s), 12 minute(s), 5 second(s)
+  Processor Board ID FDO12345678

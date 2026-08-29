@@ -1,0 +1,9 @@
+IP Route Table for VRF "default"
+'*' denotes best ucast next-hop
+
+10.0.0.0/31, ubest/mbest: 1/0, attached
+    *via 10.0.0.0, Eth1/1, [0/0], 1d00h, direct
+10.0.20.0/24, ubest/mbest: 1/0
+    *via 10.0.0.1, Eth1/1, [110/41], 00:05:12, ospf-1, intra
+10.255.0.2/32, ubest/mbest: 1/0
+    *via 10.0.0.1, Eth1/1, [20/0], 00:04:00, bgp-65001

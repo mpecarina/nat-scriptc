@@ -1,0 +1,11 @@
+VRF: default
+Codes: C - connected, S - static, K - kernel,
+       O - OSPF, B - BGP
+
+ C        10.0.2.0/24 is directly connected, Management1
+ S        0.0.0.0/0 [1/0] via 10.0.2.2, Management1
+ O        10.0.20.0/24 [110/20] via 10.1.12.2, Ethernet2
+                                via 10.1.13.2, Ethernet3
+ O        10.0.30.0/24 [110/30]
+                       via 10.1.12.2, Ethernet2
+                       via 10.1.13.2, Ethernet3

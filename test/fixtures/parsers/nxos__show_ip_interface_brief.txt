@@ -1,0 +1,6 @@
+IP Interface Status for VRF "default"(1)
+Interface            IP Address      Interface Status
+Lo0                  10.255.0.1      protocol-up/link-up/admin-up
+Eth1/1               10.0.0.0        protocol-up/link-up/admin-up
+Eth1/2               10.0.0.2        protocol-down/link-down/admin-up
+mgmt0                10.0.2.15       protocol-up/link-up/admin-up

@@ -1,0 +1,4 @@
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.0  0.1 168000 11000 ?        Ss   09:31   0:02 /sbin/init
+root         412  0.0  0.0  22000  4200 ?        Ss   09:31   0:00 /lib/systemd/systemd-journald
+admin       1201  0.1  0.2  33000  9100 pts/0    Ss+  10:02   0:01 -bash

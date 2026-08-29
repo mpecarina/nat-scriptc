@@ -1,0 +1,187 @@
+[
+  {
+    "driver": "sonic",
+    "command": "show version",
+    "fixture": "sonic__show_version.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show interface status",
+    "fixture": "sonic__show_interface_status.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show ip interfaces",
+    "fixture": "sonic__show_ip_interfaces.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show ip route",
+    "fixture": "sonic__show_ip_route.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show lldp table",
+    "fixture": "sonic__show_lldp_table.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show arp",
+    "fixture": "sonic__show_arp.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show bgp l2vpn evpn summary",
+    "fixture": "sonic__show_bgp_l2vpn_evpn_summary.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show evpn",
+    "fixture": "sonic__show_evpn.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show evpn vni 10010",
+    "fixture": "sonic__show_evpn_vni_10010.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show vxlan interface",
+    "fixture": "sonic__show_vxlan_interface.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show vxlan vlanvnimap",
+    "fixture": "sonic__show_vxlan_vlanvnimap.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show vxlan vrfvnimap",
+    "fixture": "sonic__show_vxlan_vrfvnimap.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show vxlan tunnel",
+    "fixture": "sonic__show_vxlan_tunnel.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show ip vrf",
+    "fixture": "sonic__show_ip_vrf.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show vlan",
+    "fixture": "sonic__show_vlan.txt"
+  },
+  {
+    "driver": "sonic",
+    "command": "show mac address-table",
+    "fixture": "sonic__show_mac_address_table.txt"
+  },
+  {
+    "driver": "eos",
+    "command": "show version",
+    "fixture": "eos__show_version.txt"
+  },
+  {
+    "driver": "eos",
+    "command": "show interfaces status",
+    "fixture": "eos__show_interfaces_status.txt"
+  },
+  {
+    "driver": "eos",
+    "command": "show ip interface brief",
+    "fixture": "eos__show_ip_interface_brief.txt"
+  },
+  {
+    "driver": "eos",
+    "command": "show ip route",
+    "fixture": "eos__show_ip_route.txt"
+  },
+  {
+    "driver": "eos",
+    "command": "show lldp neighbors",
+    "fixture": "eos__show_lldp_neighbors.txt"
+  },
+  {
+    "driver": "ios",
+    "command": "show version",
+    "fixture": "ios__show_version.txt"
+  },
+  {
+    "driver": "ios",
+    "command": "show ip interface brief",
+    "fixture": "ios__show_ip_interface_brief.txt"
+  },
+  {
+    "driver": "ios",
+    "command": "show ip route",
+    "fixture": "ios__show_ip_route.txt"
+  },
+  {
+    "driver": "ios",
+    "command": "show cdp neighbors detail",
+    "fixture": "ios__show_cdp_neighbors_detail.txt"
+  },
+  {
+    "driver": "nxos",
+    "command": "show version",
+    "fixture": "nxos__show_version.txt"
+  },
+  {
+    "driver": "nxos",
+    "command": "show ip interface brief",
+    "fixture": "nxos__show_ip_interface_brief.txt"
+  },
+  {
+    "driver": "nxos",
+    "command": "show ip route",
+    "fixture": "nxos__show_ip_route.txt"
+  },
+  {
+    "driver": "vyos",
+    "command": "show ip route",
+    "fixture": "vyos__show_ip_route.txt"
+  },
+  {
+    "driver": "vyos",
+    "command": "show interfaces",
+    "fixture": "vyos__show_interfaces.txt"
+  },
+  {
+    "driver": "linux",
+    "command": "ls -lh /",
+    "fixture": "linux__ls__lh__.txt"
+  },
+  {
+    "driver": "linux",
+    "command": "df -h",
+    "fixture": "linux__df__h.txt"
+  },
+  {
+    "driver": "linux",
+    "command": "ps aux",
+    "fixture": "linux__ps_aux.txt"
+  },
+  {
+    "driver": "linux",
+    "command": "ip addr",
+    "fixture": "linux__ip_addr.txt"
+  },
+  {
+    "driver": "linux",
+    "command": "ip route",
+    "fixture": "linux__ip_route.txt"
+  },
+  {
+    "driver": "generic",
+    "command": "cat /etc/os-release",
+    "fixture": "generic__cat__etc_os_release.txt"
+  },
+  {
+    "driver": "generic",
+    "command": "systemctl is-active sshd",
+    "fixture": "generic__systemctl_is_active_sshd.txt"
+  }
+]

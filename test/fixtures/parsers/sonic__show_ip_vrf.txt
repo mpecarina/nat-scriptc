@@ -1,0 +1,5 @@
+VRF-NAME               INTERFACES
+----------------------------------------------------
+Vrf1                   Vlan10
+                       Loopback1
+Vrf2                   Vlan20

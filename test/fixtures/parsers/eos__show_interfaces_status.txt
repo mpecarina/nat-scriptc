@@ -1,0 +1,5 @@
+Port       Name        Status       Vlan     Duplex Speed  Type            Flags Encapsulation
+Et1        to-spine1   connected    routed   full   100G   100GBASE-SR4
+Et2                    notconnect   1        full   25G    25GBASE-CR
+Et3        uplink      connected    trunk    full   100G   100GBASE-SR4
+Ma1                    connected    routed   a-full a-1G   10/100/1000

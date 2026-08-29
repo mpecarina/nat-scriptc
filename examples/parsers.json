@@ -1,0 +1,39 @@
+{
+  "//": "A declarative parser pack for `nat --parsers`. Keyed by driver, then by command (globs allowed).",
+  "//1": "Run it with:  nat run <host> --driver linux -c 'ip -br addr' --parsers ./examples/parsers.json --json",
+
+  "linux": {
+    "ip -br addr": {
+      "kind": "linux.briefAddresses",
+      "list": "interfaces",
+      "count": true,
+      "skip": ["^\\s*$"],
+      "row": {
+        "pattern": "^(\\S+)\\s+(\\S+)\\s*(.*)$",
+        "fields": [
+          { "name": "name" },
+          { "name": "state" },
+          { "name": "up", "group": 2, "type": "boolean" },
+          { "name": "addresses", "group": 3, "split": "\\s+" }
+        ]
+      }
+    },
+    "ip -br a": { "kind": "linux.briefAddresses", "list": "interfaces", "count": true,
+      "row": { "pattern": "^(\\S+)\\s+(\\S+)\\s*(.*)$",
+        "fields": [
+          { "name": "name" },
+          { "name": "state" },
+          { "name": "up", "group": 2, "type": "boolean" },
+          { "name": "addresses", "group": 3, "split": "\\s+" }
+        ] } },
+
+    "free -m": {
+      "kind": "linux.memory",
+      "fields": {
+        "totalMb": { "pattern": "^Mem:\\s+(\\d+)", "type": "number", "flags": "m" },
+        "usedMb": { "pattern": "^Mem:\\s+\\d+\\s+(\\d+)", "type": "number", "flags": "m" },
+        "freeMb": { "pattern": "^Mem:\\s+\\d+\\s+\\d+\\s+(\\d+)", "type": "number", "flags": "m" }
+      }
+    }
+  }
+}

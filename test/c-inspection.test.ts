@@ -39,8 +39,9 @@ function sha256(path: string): string {
  * `build/c` is a generated developer artifact, not a checked-in one, so it goes
  * stale the moment a source file is edited. That is a reason to skip, not to
  * fail: making an ordinary edit-then-test loop red would teach the wrong
- * lesson. CI regenerates it (`npm run emit:c`) before its second `npm test`, so
- * these checks always run against a fresh snapshot where it matters.
+ * lesson. Release/CI jobs should regenerate it (`npm run emit:c`) before their
+ * native differential, so these checks run against a fresh snapshot where it
+ * matters.
  */
 function skipReason(): string | false {
   if (!existsSync(MANIFEST)) return "build/c not generated — run `npm run emit:c`";

@@ -67,8 +67,9 @@ Ubuntu 24.04 and newer); the musl builds have no dynamic interpreter at all,
 which suits Alpine or another minimal image that also supplies OpenSSH and the
 POSIX tools listed above. One build host emits its matching Darwin artifact plus
 all four Linux cross artifacts; the other Darwin architecture needs a matching
-host. CI exercises host-native macOS and Linux, while musl/cross artifacts
-should still be tested against your own fleet before production use.
+host. Release validation should exercise host-native macOS and Linux; musl and
+cross artifacts should still be tested against your own fleet before production
+use.
 
 ## Inspect the complete C intermediary
 

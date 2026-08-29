@@ -45,7 +45,7 @@ mkdirSync(dirname(out), { recursive: true });
 // posture worth flipping rather than rewriting: uncomment to have `npm run
 // build` always refresh the snapshot. While it is off, `npm run emit:c`
 // generates build/c on demand, the inspection test skips when the snapshot is
-// missing or stale, and CI emits it explicitly.
+// missing or stale; a release/CI job should emit it explicitly.
 //
 // const inspectionArgs = [join(ROOT, "scripts", "emit.mjs"), "c"];
 // if (optimization === "dev") inspectionArgs.push("--dev");

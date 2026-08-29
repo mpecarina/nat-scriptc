@@ -1,0 +1,3 @@
+VTEP Name : vtep1, SIP : 10.255.0.1
+NVO Name : nvo1, VTEP : vtep1
+Source interface : Loopback0

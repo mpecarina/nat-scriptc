@@ -1,0 +1,6 @@
+Interface    Master    IPv4 address/mask    Admin/Oper    BGP Neighbor    Neighbor IP
+-----------  --------  -------------------  ------------  --------------  -------------
+Ethernet0              10.0.0.1/31          up/up         N/A             N/A
+Vlan10       Vrf1      10.10.10.1/24        up/up         N/A             N/A
+Loopback0              10.255.0.1/32        up/up         N/A             N/A
+docker0                240.127.1.1/24       up/down       N/A             N/A

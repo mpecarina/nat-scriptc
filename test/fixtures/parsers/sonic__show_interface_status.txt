@@ -1,0 +1,5 @@
+Interface        Lanes    Speed    MTU    FEC       Alias    Vlan    Oper    Admin             Type    Asym PFC
+-----------  ---------  -------  -----  -----  ----------  ------  ------  -------  ---------------  ----------
+  Ethernet0      33,34     100G   9100     rs     Eth1/1   trunk      up       up   QSFP28 or later         off
+  Ethernet4      37,38     100G   9100     rs     Eth2/1   routed    down      up   QSFP28 or later         off
+  Ethernet8      41,42      25G   9100     rs     Eth3/1   routed      up       up   QSFP28 or later         off

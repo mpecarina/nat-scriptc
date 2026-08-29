@@ -1,0 +1,9 @@
+SONiC Software Version: SONiC.4.1.0-Enterprise_Base
+Distribution: Debian 11.7
+Kernel: 5.10.0-23-2-amd64
+Build commit: 8f4ba6e2
+Platform: x86_64-cel_seastone-r0
+HwSKU: Celestica-DX010-C32
+ASIC: broadcom
+Serial Number: DX010-1234
+Uptime: 15:04:05 up 3 days, 1:12, 1 user, load average: 0.15

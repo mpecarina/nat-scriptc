@@ -1,0 +1,10 @@
+Codes: L - local, C - connected, S - static, R - RIP, M - mobile, B - BGP
+Gateway of last resort is 192.168.122.1 to network 0.0.0.0
+
+S*    0.0.0.0/0 [1/0] via 192.168.122.1
+      10.0.0.0/8 is variably subnetted, 5 subnets, 3 masks
+C        10.0.10.0/24 is directly connected, GigabitEthernet1
+L        10.0.10.1/32 is directly connected, GigabitEthernet1
+O        10.0.20.0/24 [110/2] via 10.1.12.2, 00:05:12, GigabitEthernet2
+                      [110/2] via 10.1.13.2, 00:05:12, GigabitEthernet3
+B        10.0.30.0/24 [20/0] via 10.1.12.2, 00:04:00, GigabitEthernet2

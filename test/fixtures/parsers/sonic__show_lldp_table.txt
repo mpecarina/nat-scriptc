@@ -1,0 +1,6 @@
+LocalPort    RemoteDevice    RemotePortID    Capability    RemotePortDescr
+-----------  --------------  --------------  ------------  -----------------
+Ethernet0    spine1          Ethernet1       BR            to-leaf1
+Ethernet4    spine2          Ethernet1       BR            to-leaf1
+--------------------------------------------------
+Total entries displayed:  2

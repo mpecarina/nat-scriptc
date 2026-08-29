@@ -1,0 +1,11 @@
+VNI: 10010
+  Type: L2
+  Tenant VRF: Vrf1
+  VxLAN interface: vtep1
+  SVI interface: Vlan10
+  Local VTEP IP: 10.255.0.1
+  Mcast group: 0.0.0.0
+  No remote VTEPs known for this VNI
+  Number of MACs (local and remote) known for this VNI: 3
+  Number of ARPs (IPv4 and IPv6, local and remote) known for this VNI: 2
+  Advertise-gw-macip: No

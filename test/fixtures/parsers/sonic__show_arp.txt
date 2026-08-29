@@ -1,0 +1,5 @@
+Address       MacAddress         Iface        Vlan    Status
+------------  -----------------  -----------  ------  --------
+10.10.10.5    52:54:00:aa:bb:cc  Vlan10       10      Dynamic
+10.0.0.0      52:54:00:11:22:33  Ethernet0    -       Dynamic
+Total number of entries 2

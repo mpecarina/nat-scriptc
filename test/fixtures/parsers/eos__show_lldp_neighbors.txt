@@ -1,0 +1,5 @@
+Last table change time   : 0:05:12 ago
+Port          Neighbor Device ID       Neighbor Port ID    TTL
+Et1           spine1.lab               Ethernet1           120
+Et2           spine two lab            Ethernet2           120
+Ma1           mgmt-switch              Gi0/1               120

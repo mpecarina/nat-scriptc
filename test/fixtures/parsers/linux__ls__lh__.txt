@@ -1,0 +1,5 @@
+total 68K
+drwxr-xr-x   2 root root 4.0K Jan  1 00:00 bin
+drwxr-xr-x   4 root root 4.0K Feb 14 09:31 boot
+lrwxrwxrwx   1 root root    7 Jan  1 00:00 lib -> usr/lib
+-rw-r--r--   1 root root  15K Mar  2 11:02 initrd.img

@@ -1,0 +1,4 @@
+VRF     VNI
+-----   -----
+Vrf1    10999
+Total count : 1

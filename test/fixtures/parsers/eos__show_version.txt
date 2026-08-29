@@ -1,0 +1,10 @@
+Arista DCS-7050SX3-48YC8-F
+Hardware version: 11.03
+Serial number: JPE12345678
+System MAC address: 2899.3a12.3456
+Software image version: 4.30.3M
+Architecture: x86_64
+Internal build version: 4.30.3M-33434233.4303M
+Uptime: 3 days, 1 hours and 12 minutes
+Total memory: 8118168 kB
+Free memory: 5701668 kB

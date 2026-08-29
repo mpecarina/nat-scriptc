@@ -1,0 +1,5 @@
+Q: A - Access (Untagged), T - Tagged
+NUM        Status       Q Ports              Autostate     Dynamic
+10         Active       T Ethernet0          Enable        No
+             A Ethernet4
+20         Active                            Disable       Yes

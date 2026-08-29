@@ -1,0 +1,1043 @@
+{
+  "sonic|show version": {
+    "kind": "sonic.version",
+    "fields": {
+      "SONiC Software Version": "SONiC.4.1.0-Enterprise_Base",
+      "Distribution": "Debian 11.7",
+      "Kernel": "5.10.0-23-2-amd64",
+      "Build commit": "8f4ba6e2",
+      "Platform": "x86_64-cel_seastone-r0",
+      "HwSKU": "Celestica-DX010-C32",
+      "ASIC": "broadcom",
+      "Serial Number": "DX010-1234",
+      "Uptime": "15:04:05 up 3 days, 1:12, 1 user, load average: 0.15"
+    }
+  },
+  "sonic|show interface status": {
+    "kind": "sonic.interfaceStatus",
+    "interfaces": [
+      {
+        "name": "Ethernet0",
+        "operStatus": "up",
+        "speedMbps": 100000,
+        "mtu": 9100,
+        "alternateName": "Eth1/1"
+      },
+      {
+        "name": "Ethernet4",
+        "operStatus": "down",
+        "speedMbps": 100000,
+        "mtu": 9100,
+        "alternateName": "Eth2/1"
+      },
+      {
+        "name": "Ethernet8",
+        "operStatus": "up",
+        "speedMbps": 25000,
+        "mtu": 9100,
+        "alternateName": "Eth3/1"
+      }
+    ]
+  },
+  "sonic|show ip interfaces": {
+    "kind": "sonic.ipInterfaces",
+    "interfaces": [
+      {
+        "name": "Ethernet0",
+        "addresses": [
+          "10.0.0.1/31"
+        ],
+        "adminStatus": "up",
+        "operStatus": "up"
+      },
+      {
+        "name": "Vlan10",
+        "addresses": [
+          "10.10.10.1/24"
+        ],
+        "adminStatus": "up",
+        "operStatus": "up"
+      },
+      {
+        "name": "Loopback0",
+        "addresses": [
+          "10.255.0.1/32"
+        ],
+        "adminStatus": "up",
+        "operStatus": "up"
+      }
+    ]
+  },
+  "sonic|show ip route": {
+    "kind": "sonic.ipRoute",
+    "routes": [
+      {
+        "prefix": "0.0.0.0/0",
+        "protocol": "K",
+        "adminDistance": 0,
+        "metric": 202,
+        "nextHopIp": "192.168.122.1",
+        "outgoingInterface": "eth0"
+      },
+      {
+        "prefix": "10.0.0.0/31",
+        "protocol": "C",
+        "adminDistance": 0,
+        "metric": 0,
+        "outgoingInterface": "Ethernet0"
+      },
+      {
+        "prefix": "10.2.2.2/32",
+        "protocol": "S",
+        "adminDistance": 1,
+        "metric": 0,
+        "nextHopIp": "10.255.0.2",
+        "outgoingInterface": "Ethernet0"
+      },
+      {
+        "prefix": "10.255.0.2/32",
+        "protocol": "B",
+        "adminDistance": 20,
+        "metric": 0,
+        "nextHopIp": "10.0.0.0",
+        "outgoingInterface": "Ethernet0"
+      }
+    ]
+  },
+  "sonic|show lldp table": {
+    "kind": "sonic.lldpTable",
+    "neighbors": [
+      {
+        "localPort": "Ethernet0",
+        "remoteDevice": "spine1",
+        "remotePortId": "Ethernet1",
+        "capability": "BR"
+      },
+      {
+        "localPort": "Ethernet4",
+        "remoteDevice": "spine2",
+        "remotePortId": "Ethernet1",
+        "capability": "BR"
+      }
+    ]
+  },
+  "sonic|show arp": {
+    "kind": "sonic.arp",
+    "neighbors": [
+      {
+        "ip": "10.10.10.5",
+        "mac": "52:54:00:aa:bb:cc",
+        "iface": "Vlan10",
+        "type": "Dynamic",
+        "status": "Dynamic"
+      },
+      {
+        "ip": "10.0.0.0",
+        "mac": "52:54:00:11:22:33",
+        "iface": "Ethernet0",
+        "type": "Dynamic",
+        "status": "Dynamic"
+      }
+    ]
+  },
+  "sonic|show bgp l2vpn evpn summary": {
+    "kind": "sonic.bgpSummary",
+    "addressFamily": "l2vpn-evpn",
+    "routerId": "10.255.0.1",
+    "localAs": 65001,
+    "vrf": "default",
+    "neighbors": [
+      {
+        "neighbor": "10.0.0.0",
+        "version": 4,
+        "remoteAs": 65100,
+        "msgRcvd": 41,
+        "msgSent": 44,
+        "inQ": 0,
+        "outQ": 0,
+        "upDown": "0",
+        "state": "00:01:52"
+      }
+    ],
+    "totalNeighbors": 2,
+    "establishedNeighbors": 1
+  },
+  "sonic|show evpn": {
+    "kind": "sonic.evpn",
+    "l2VniCount": 2,
+    "l3VniCount": 1,
+    "advertiseGatewayMacIp": true,
+    "advertiseSviMacIp": false,
+    "advertiseSviMac": false,
+    "totalIpv4Neighbors": 4,
+    "totalIpv6Neighbors": 0,
+    "fields": {
+      "L2 VNIs": "2",
+      "L3 VNIs": "1",
+      "Advertise gateway mac-ip": "Yes",
+      "Advertise svi mac-ip": "No",
+      "Advertise svi mac": "No",
+      "Total IPv4 neighbors": "4",
+      "Total IPv6 neighbors": "0"
+    }
+  },
+  "sonic|show evpn vni 10010": {
+    "kind": "sonic.evpnVni",
+    "vni": 10010,
+    "type": "L2",
+    "tenantVrf": "Vrf1",
+    "vxlanInterface": "vtep1",
+    "sviInterface": "Vlan10",
+    "localVtepIp": "10.255.0.1",
+    "mcastGroup": "0.0.0.0",
+    "hasRemoteVteps": false,
+    "macCount": 3,
+    "arpCount": 2,
+    "advertiseGwMacIp": false,
+    "fields": {
+      "VNI": "10010",
+      "Type": "L2",
+      "Tenant VRF": "Vrf1",
+      "VxLAN interface": "vtep1",
+      "SVI interface": "Vlan10",
+      "Local VTEP IP": "10.255.0.1",
+      "Mcast group": "0.0.0.0",
+      "Number of MACs (local and remote) known for this VNI": "3",
+      "Number of ARPs (IPv4 and IPv6, local and remote) known for this VNI": "2",
+      "Advertise-gw-macip": "No"
+    }
+  },
+  "sonic|show vxlan interface": {
+    "kind": "sonic.vxlanInterface",
+    "vtepName": "vtep1",
+    "sourceIp": "10.255.0.1",
+    "evpnNvoName": "nvo1",
+    "evpnVtep": "vtep1",
+    "sourceInterface": "Loopback0",
+    "fields": {
+      "VTEP Name": "vtep1",
+      "SIP": "10.255.0.1",
+      "NVO Name": "nvo1",
+      "VTEP": "vtep1",
+      "Source interface": "Loopback0"
+    }
+  },
+  "sonic|show vxlan vlanvnimap": {
+    "kind": "sonic.vxlanVlanVniMap",
+    "mappings": [
+      {
+        "vlan": "Vlan10",
+        "vlanId": 10,
+        "vni": 10010
+      },
+      {
+        "vlan": "Vlan20",
+        "vlanId": 20,
+        "vni": 10020
+      }
+    ],
+    "totalCount": 2
+  },
+  "sonic|show vxlan vrfvnimap": {
+    "kind": "sonic.vxlanVrfVniMap",
+    "mappings": [
+      {
+        "vrf": "Vrf1",
+        "vni": 10999
+      }
+    ],
+    "totalCount": 1
+  },
+  "sonic|show vxlan tunnel": {
+    "kind": "sonic.vxlanTunnel",
+    "tunnels": [
+      {
+        "name": "vtep1",
+        "srcIp": "10.255.0.1",
+        "dstIp": "10.255.0.2",
+        "source": "EVPN",
+        "group": "-",
+        "dvni": "10010",
+        "operStatus": "oper_up"
+      },
+      {
+        "name": "vtep1",
+        "srcIp": "10.255.0.1",
+        "dstIp": "10.255.0.3",
+        "source": "EVPN",
+        "group": "-",
+        "dvni": "10010",
+        "operStatus": "oper_down"
+      }
+    ]
+  },
+  "sonic|show ip vrf": {
+    "kind": "sonic.ipVrf",
+    "vrfs": [
+      {
+        "name": "Vrf1",
+        "interfaces": [
+          "Vlan10",
+          "Loopback1"
+        ]
+      },
+      {
+        "name": "Vrf2",
+        "interfaces": [
+          "Vlan20"
+        ]
+      }
+    ]
+  },
+  "sonic|show vlan": {
+    "kind": "sonic.vlan",
+    "vlans": [
+      {
+        "vlanId": 10,
+        "status": "Active",
+        "ports": [
+          {
+            "name": "Ethernet0",
+            "tagging": "tagged"
+          },
+          {
+            "name": "Ethernet4",
+            "tagging": "access"
+          }
+        ],
+        "autostate": "Enable",
+        "dynamic": "No"
+      },
+      {
+        "vlanId": 20,
+        "status": "Active",
+        "ports": [],
+        "autostate": "Disable",
+        "dynamic": "Yes"
+      }
+    ]
+  },
+  "sonic|show mac address-table": {
+    "kind": "sonic.macAddressTable",
+    "entries": [
+      {
+        "vlan": 10,
+        "mac": "52:54:00:aa:bb:cc",
+        "type": "Dynamic",
+        "interface": "Ethernet0"
+      },
+      {
+        "vlan": 20,
+        "mac": "52:54:00:dd:ee:ff",
+        "type": "Static",
+        "interface": "Ethernet4"
+      }
+    ]
+  },
+  "eos|show version": {
+    "kind": "eos.version",
+    "model": "Arista DCS-7050SX3-48YC8-F",
+    "softwareImageVersion": "4.30.3M",
+    "architecture": "x86_64",
+    "systemMacAddress": "2899.3a12.3456",
+    "serialNumber": "JPE12345678",
+    "uptime": "3 days, 1 hours and 12 minutes",
+    "totalMemoryKb": 8118168,
+    "fields": {
+      "Hardware version": "11.03",
+      "Serial number": "JPE12345678",
+      "System MAC address": "2899.3a12.3456",
+      "Software image version": "4.30.3M",
+      "Architecture": "x86_64",
+      "Internal build version": "4.30.3M-33434233.4303M",
+      "Uptime": "3 days, 1 hours and 12 minutes",
+      "Total memory": "8118168 kB",
+      "Free memory": "5701668 kB"
+    }
+  },
+  "eos|show interfaces status": {
+    "kind": "eos.interfaceStatus",
+    "interfaces": [
+      {
+        "port": "Et1",
+        "name": "to-spine1",
+        "status": "connected",
+        "vlan": "routed",
+        "duplex": "full",
+        "speed": "100G",
+        "type": "100GBASE-SR4"
+      },
+      {
+        "port": "Et2",
+        "status": "notconnect",
+        "vlan": "1",
+        "duplex": "full",
+        "speed": "25G",
+        "type": "25GBASE-CR"
+      },
+      {
+        "port": "Et3",
+        "name": "uplink",
+        "status": "connected",
+        "vlan": "trunk",
+        "duplex": "full",
+        "speed": "100G",
+        "type": "100GBASE-SR4"
+      },
+      {
+        "port": "Ma1",
+        "status": "connected",
+        "vlan": "routed",
+        "duplex": "a-full",
+        "speed": "a-1G",
+        "type": "10/100/1000"
+      }
+    ]
+  },
+  "eos|show ip interface brief": {
+    "kind": "eos.ipInterfaces",
+    "interfaces": [
+      {
+        "name": "Ethernet1",
+        "addresses": [
+          "10.0.0.0/31"
+        ],
+        "adminStatus": "up",
+        "operStatus": "up",
+        "mtu": 9214
+      },
+      {
+        "name": "Ethernet2",
+        "addresses": [],
+        "adminStatus": "down",
+        "operStatus": "down",
+        "mtu": 9214
+      },
+      {
+        "name": "Loopback0",
+        "addresses": [
+          "10.255.0.1/32"
+        ],
+        "adminStatus": "up",
+        "operStatus": "up",
+        "mtu": 65535
+      },
+      {
+        "name": "Management1",
+        "addresses": [
+          "10.0.2.15/24"
+        ],
+        "adminStatus": "up",
+        "operStatus": "up",
+        "mtu": 1500
+      }
+    ]
+  },
+  "eos|show ip route": {
+    "kind": "eos.ipRoute",
+    "vrf": "default",
+    "routes": [
+      {
+        "prefix": "10.0.2.0/24",
+        "protocol": "connected",
+        "adminDistance": 0,
+        "metric": 0,
+        "outgoingInterface": "Management1"
+      },
+      {
+        "prefix": "0.0.0.0/0",
+        "protocol": "static",
+        "adminDistance": 1,
+        "metric": 0,
+        "nextHopIp": "10.0.2.2",
+        "outgoingInterface": "Management1"
+      },
+      {
+        "prefix": "10.0.20.0/24",
+        "protocol": "ospf",
+        "adminDistance": 110,
+        "metric": 20,
+        "nextHopIp": "10.1.12.2",
+        "outgoingInterface": "Ethernet2"
+      },
+      {
+        "prefix": "10.0.20.0/24",
+        "protocol": "ospf",
+        "adminDistance": 110,
+        "metric": 20,
+        "nextHopIp": "10.1.13.2",
+        "outgoingInterface": "Ethernet3"
+      },
+      {
+        "prefix": "10.0.30.0/24",
+        "protocol": "ospf",
+        "adminDistance": 110,
+        "metric": 30,
+        "nextHopIp": "10.1.12.2",
+        "outgoingInterface": "Ethernet2"
+      },
+      {
+        "prefix": "10.0.30.0/24",
+        "protocol": "ospf",
+        "adminDistance": 110,
+        "metric": 30,
+        "nextHopIp": "10.1.13.2",
+        "outgoingInterface": "Ethernet3"
+      }
+    ]
+  },
+  "eos|show lldp neighbors": {
+    "kind": "eos.lldpNeighbors",
+    "neighbors": [
+      {
+        "localPort": "Et1",
+        "neighborDevice": "spine1.lab",
+        "neighborPort": "Ethernet1",
+        "ttl": 120
+      },
+      {
+        "localPort": "Et2",
+        "neighborDevice": "spine two lab",
+        "neighborPort": "Ethernet2",
+        "ttl": 120
+      },
+      {
+        "localPort": "Ma1",
+        "neighborDevice": "mgmt-switch",
+        "neighborPort": "Gi0/1",
+        "ttl": 120
+      }
+    ]
+  },
+  "ios|show version": {
+    "kind": "ios.version",
+    "model": "CSR1000V",
+    "version": "17.03.05",
+    "softwareImageVersion": "17.03.05",
+    "softwareTrain": "Amsterdam",
+    "softwareImage": "X86_64_LINUX_IOSD-UNIVERSALK9-M",
+    "hostname": "csr1",
+    "uptime": "1 hour, 12 minutes",
+    "serialNumber": "9SAGBWY7QHD",
+    "systemImageFile": "bootflash:packages.conf"
+  },
+  "ios|show ip interface brief": {
+    "kind": "ios.ipInterfaces",
+    "interfaces": [
+      {
+        "name": "GigabitEthernet1",
+        "ipAddress": "10.0.10.1",
+        "method": "NVRAM",
+        "status": "up",
+        "adminStatus": "up",
+        "operStatus": "up"
+      },
+      {
+        "name": "GigabitEthernet2",
+        "ipAddress": "10.1.12.1",
+        "method": "NVRAM",
+        "status": "up",
+        "adminStatus": "up",
+        "operStatus": "up"
+      },
+      {
+        "name": "GigabitEthernet3",
+        "ipAddress": null,
+        "method": "NVRAM",
+        "status": "administratively down",
+        "adminStatus": "down",
+        "operStatus": "down"
+      },
+      {
+        "name": "Loopback0",
+        "ipAddress": "10.255.0.1",
+        "method": "NVRAM",
+        "status": "up",
+        "adminStatus": "up",
+        "operStatus": "up"
+      }
+    ]
+  },
+  "ios|show ip route": {
+    "kind": "ios.ipRoute",
+    "routes": [
+      {
+        "prefix": "0.0.0.0/0",
+        "protocol": "static",
+        "adminDistance": 1,
+        "metric": 0,
+        "nextHopIp": "192.168.122.1"
+      },
+      {
+        "prefix": "10.0.10.0/24",
+        "protocol": "connected",
+        "adminDistance": 0,
+        "metric": 0,
+        "outgoingInterface": "GigabitEthernet1"
+      },
+      {
+        "prefix": "10.0.10.1/32",
+        "protocol": "local",
+        "adminDistance": 0,
+        "metric": 0,
+        "outgoingInterface": "GigabitEthernet1"
+      },
+      {
+        "prefix": "10.0.20.0/24",
+        "protocol": "ospf",
+        "adminDistance": 110,
+        "metric": 2,
+        "nextHopIp": "10.1.12.2",
+        "outgoingInterface": "GigabitEthernet2"
+      },
+      {
+        "prefix": "10.0.20.0/24",
+        "protocol": "ospf",
+        "adminDistance": 110,
+        "metric": 2,
+        "nextHopIp": "10.1.13.2",
+        "outgoingInterface": "GigabitEthernet3"
+      },
+      {
+        "prefix": "10.0.30.0/24",
+        "protocol": "bgp",
+        "adminDistance": 20,
+        "metric": 0,
+        "nextHopIp": "10.1.12.2",
+        "outgoingInterface": "GigabitEthernet2"
+      }
+    ]
+  },
+  "ios|show cdp neighbors detail": {
+    "kind": "ios.cdpNeighbors",
+    "neighbors": [
+      {
+        "neighborDevice": "csr2.lab",
+        "mgmtAddress": "10.1.12.2",
+        "platform": "Cisco CSR1000V",
+        "capabilities": [
+          "Router"
+        ],
+        "localInterface": "GigabitEthernet2",
+        "neighborPort": "GigabitEthernet1",
+        "holdtime": 143
+      },
+      {
+        "neighborDevice": "csr3.lab",
+        "mgmtAddress": "10.1.13.2",
+        "platform": "Cisco CSR1000V",
+        "capabilities": [
+          "Router",
+          "Switch"
+        ],
+        "localInterface": "GigabitEthernet3",
+        "neighborPort": "GigabitEthernet1",
+        "holdtime": 160
+      }
+    ]
+  },
+  "nxos|show version": {
+    "kind": "ios.version",
+    "model": "Nexus9000",
+    "version": "9.3(10)",
+    "softwareImageVersion": "9.3(10)",
+    "softwareImage": "bootflash:///nxos.9.3.10.bin",
+    "hostname": "nexus1",
+    "uptime": "3 day(s), 1 hour(s), 12 minute(s), 5 second(s)",
+    "serialNumber": "FDO12345678",
+    "systemImageFile": "bootflash:///nxos.9.3.10.bin"
+  },
+  "nxos|show ip interface brief": {
+    "kind": "ios.ipInterfaces",
+    "interfaces": [
+      {
+        "name": "Loopback0",
+        "ipAddress": "10.255.0.1",
+        "method": "manual",
+        "status": "protocol-up/link-up/admin-up",
+        "adminStatus": "up",
+        "operStatus": "up"
+      },
+      {
+        "name": "Ethernet1/1",
+        "ipAddress": "10.0.0.0",
+        "method": "manual",
+        "status": "protocol-up/link-up/admin-up",
+        "adminStatus": "up",
+        "operStatus": "up"
+      },
+      {
+        "name": "Ethernet1/2",
+        "ipAddress": "10.0.0.2",
+        "method": "manual",
+        "status": "protocol-down/link-down/admin-up",
+        "adminStatus": "up",
+        "operStatus": "up"
+      },
+      {
+        "name": "mgmt0",
+        "ipAddress": "10.0.2.15",
+        "method": "manual",
+        "status": "protocol-up/link-up/admin-up",
+        "adminStatus": "up",
+        "operStatus": "up"
+      }
+    ]
+  },
+  "nxos|show ip route": {
+    "kind": "ios.ipRoute",
+    "routes": [
+      {
+        "prefix": "10.0.0.0/31",
+        "protocol": "connected",
+        "adminDistance": 0,
+        "metric": 0,
+        "outgoingInterface": "Ethernet1/1"
+      },
+      {
+        "prefix": "10.0.20.0/24",
+        "protocol": "static",
+        "adminDistance": 110,
+        "metric": 41,
+        "outgoingInterface": "Ethernet1/1",
+        "nextHopIp": "10.0.0.1"
+      },
+      {
+        "prefix": "10.255.0.2/32",
+        "protocol": "static",
+        "adminDistance": 20,
+        "metric": 0,
+        "outgoingInterface": "Ethernet1/1",
+        "nextHopIp": "10.0.0.1"
+      }
+    ]
+  },
+  "vyos|show ip route": {
+    "routes": [
+      {
+        "prefix": "10.50.2.0/24",
+        "protocol": "static",
+        "selected": true,
+        "fib": true,
+        "nextHops": [
+          {
+            "via": "10.50.0.2",
+            "interface": "eth2",
+            "connected": false
+          }
+        ],
+        "distance": 1,
+        "metric": 0
+      },
+      {
+        "prefix": "10.50.1.0/24",
+        "protocol": "connected",
+        "selected": true,
+        "fib": true,
+        "nextHops": [
+          {
+            "via": null,
+            "interface": "eth1",
+            "connected": true
+          }
+        ]
+      },
+      {
+        "prefix": "10.0.20.0/24",
+        "protocol": "ospf",
+        "selected": true,
+        "fib": true,
+        "nextHops": [
+          {
+            "via": "10.1.12.2",
+            "interface": "eth2",
+            "connected": false
+          },
+          {
+            "via": "10.1.13.2",
+            "interface": "eth3",
+            "connected": false
+          }
+        ],
+        "distance": 110,
+        "metric": 3
+      }
+    ],
+    "count": 3
+  },
+  "vyos|show interfaces": {
+    "interfaces": [
+      {
+        "name": "eth0",
+        "address": "192.168.122.10/24",
+        "mac": "52:54:00:aa:bb:cc",
+        "mtu": 1500,
+        "state": "u",
+        "link": "u",
+        "description": "MGMT"
+      },
+      {
+        "name": "eth1",
+        "address": "10.50.1.1/24",
+        "mac": "52:54:00:aa:bb:cd",
+        "mtu": 1500,
+        "state": "u",
+        "link": "u",
+        "description": "LAN"
+      },
+      {
+        "name": "eth2",
+        "address": null,
+        "mac": "52:54:00:aa:bb:ce",
+        "mtu": 1500,
+        "state": "A",
+        "link": "D",
+        "description": null
+      }
+    ],
+    "count": 3
+  },
+  "linux|ls -lh /": {
+    "entries": [
+      {
+        "type": "dir",
+        "perms": "drwxr-xr-x",
+        "links": 2,
+        "owner": "root",
+        "group": "root",
+        "size": "4.0K",
+        "date": "Jan  1 00:00",
+        "name": "bin",
+        "target": null
+      },
+      {
+        "type": "dir",
+        "perms": "drwxr-xr-x",
+        "links": 4,
+        "owner": "root",
+        "group": "root",
+        "size": "4.0K",
+        "date": "Feb 14 09:31",
+        "name": "boot",
+        "target": null
+      },
+      {
+        "type": "symlink",
+        "perms": "lrwxrwxrwx",
+        "links": 1,
+        "owner": "root",
+        "group": "root",
+        "size": "7",
+        "date": "Jan  1 00:00",
+        "name": "lib",
+        "target": "usr/lib"
+      },
+      {
+        "type": "file",
+        "perms": "-rw-r--r--",
+        "links": 1,
+        "owner": "root",
+        "group": "root",
+        "size": "15K",
+        "date": "Mar  2 11:02",
+        "name": "initrd.img",
+        "target": null
+      }
+    ],
+    "count": 4
+  },
+  "linux|df -h": {
+    "columns": [
+      "filesystem",
+      "size",
+      "used",
+      "avail",
+      "use",
+      "mounted_on"
+    ],
+    "rows": [
+      {
+        "filesystem": "udev",
+        "size": "3.9G",
+        "used": "0",
+        "avail": "3.9G",
+        "use": "0%",
+        "mounted_on": "/dev"
+      },
+      {
+        "filesystem": "/dev/sda1",
+        "size": "20G",
+        "used": "5.0G",
+        "avail": "14G",
+        "use": "27%",
+        "mounted_on": "/"
+      },
+      {
+        "filesystem": "tmpfs",
+        "size": "798M",
+        "used": "1.1M",
+        "avail": "797M",
+        "use": "1%",
+        "mounted_on": "/run"
+      }
+    ]
+  },
+  "linux|ps aux": {
+    "columns": [
+      "user",
+      "pid",
+      "cpu",
+      "mem",
+      "vsz",
+      "rss",
+      "tty",
+      "stat",
+      "start",
+      "time",
+      "command"
+    ],
+    "rows": [
+      {
+        "user": "root",
+        "pid": "1",
+        "cpu": "0.0",
+        "mem": "0.1",
+        "vsz": "168000",
+        "rss": "11000",
+        "tty": "?",
+        "stat": "Ss",
+        "start": "09:31",
+        "time": "0:02",
+        "command": "/sbin/init"
+      },
+      {
+        "user": "root",
+        "pid": "412",
+        "cpu": "0.0",
+        "mem": "0.0",
+        "vsz": "22000",
+        "rss": "4200",
+        "tty": "?",
+        "stat": "Ss",
+        "start": "09:31",
+        "time": "0:00",
+        "command": "/lib/systemd/systemd-journald"
+      },
+      {
+        "user": "admin",
+        "pid": "1201",
+        "cpu": "0.1",
+        "mem": "0.2",
+        "vsz": "33000",
+        "rss": "9100",
+        "tty": "pts/0",
+        "stat": "Ss+",
+        "start": "10:02",
+        "time": "0:01",
+        "command": "-bash"
+      }
+    ]
+  },
+  "linux|ip addr": {
+    "interfaces": [
+      {
+        "name": "lo",
+        "address": "127.0.0.1/8",
+        "mac": null,
+        "mtu": 65536,
+        "state": "u",
+        "link": "u",
+        "description": null
+      },
+      {
+        "name": "enp1s0",
+        "address": "192.168.122.254/24",
+        "mac": "52:54:00:12:34:56",
+        "mtu": 1500,
+        "state": "u",
+        "link": "u",
+        "description": null
+      },
+      {
+        "name": "ppp0",
+        "address": "100.64.10.15/32",
+        "mac": null,
+        "mtu": 1492,
+        "state": "u",
+        "link": "u",
+        "description": null,
+        "peer": "10.200.10.1/32"
+      }
+    ],
+    "count": 3
+  },
+  "linux|ip route": {
+    "routes": [
+      {
+        "prefix": "0.0.0.0/0",
+        "protocol": "dhcp",
+        "selected": true,
+        "fib": true,
+        "nextHops": [
+          {
+            "via": "192.168.122.1",
+            "interface": "enp1s0",
+            "connected": false
+          }
+        ],
+        "metric": 100,
+        "src": "192.168.122.254"
+      },
+      {
+        "prefix": "10.200.10.1/32",
+        "protocol": "kernel",
+        "selected": true,
+        "fib": true,
+        "nextHops": [
+          {
+            "via": null,
+            "interface": "ppp0",
+            "connected": true
+          }
+        ],
+        "src": "100.64.10.15"
+      },
+      {
+        "prefix": "192.168.122.0/24",
+        "protocol": "kernel",
+        "selected": true,
+        "fib": true,
+        "nextHops": [
+          {
+            "via": null,
+            "interface": "enp1s0",
+            "connected": true
+          }
+        ],
+        "metric": 100,
+        "src": "192.168.122.254"
+      }
+    ],
+    "count": 3
+  },
+  "generic|cat /etc/os-release": {
+    "fields": {
+      "PRETTY_NAME": "\"Debian GNU/Linux 11 (bullseye)\"",
+      "NAME": "\"Debian GNU/Linux\"",
+      "VERSION_ID": "\"11\"",
+      "ID": "debian"
+    },
+    "lines": [
+      "PRETTY_NAME=\"Debian GNU/Linux 11 (bullseye)\"",
+      "NAME=\"Debian GNU/Linux\"",
+      "VERSION_ID=\"11\"",
+      "ID=debian"
+    ]
+  },
+  "generic|systemctl is-active sshd": {
+    "fields": {},
+    "lines": [
+      "active"
+    ]
+  }
+}

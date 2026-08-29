@@ -1,0 +1,8 @@
+Cisco IOS XE Software, Version 17.03.05
+Cisco IOS Software [Amsterdam], Virtual XE Software (X86_64_LINUX_IOSD-UNIVERSALK9-M), Version 17.3.5, RELEASE SOFTWARE (fc3)
+
+csr1 uptime is 1 hour, 12 minutes
+System image file is "bootflash:packages.conf"
+
+cisco CSR1000V (VXE) processor (revision VXE) with 2071227K/3075K bytes of memory.
+Processor board ID 9SAGBWY7QHD

@@ -1,0 +1,34 @@
+{
+  "source": "vmlab",
+  "devices": [
+    {
+      "id": "leaf1",
+      "mgmtIp": "10.10.0.11",
+      "sshUser": "admin",
+      "sshPort": 22,
+      "driver": "sonic",
+      "password": "YourPaSsWoRd"
+    },
+    {
+      "id": "leaf2",
+      "mgmtIps": ["10.10.0.12"],
+      "sshUser": "admin",
+      "driver": "sonic",
+      "sshIdentityFile": "~/.ssh/id_lab"
+    },
+    {
+      "id": "border1",
+      "mgmtIp": "10.10.0.21",
+      "sshUser": "cisco",
+      "driver": "ios",
+      "password": "YourPaSsWoRd"
+    },
+    {
+      "id": "host1",
+      "mgmtIp": "10.10.0.51",
+      "sshUser": "ubuntu",
+      "driver": "linux",
+      "sshIdentityFile": "~/.ssh/id_lab"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+L2 VNIs: 2
+L3 VNIs: 1
+Advertise gateway mac-ip: Yes
+Advertise svi mac-ip: No
+Advertise svi mac: No
+Total IPv4 neighbors: 4
+Total IPv6 neighbors: 0

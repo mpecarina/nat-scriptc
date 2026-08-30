@@ -221,7 +221,10 @@ nat cred delete host1 --kind passphrase
 nat doctor
 ```
 
-Use `--ssh-config <path>` to point at an alternate SSH config file.
+Use `--ssh-config <path>` to point at an alternate SSH config file. The default
+`~/.ssh/config` is optional for literal hosts, just as it is for `ssh`; when it
+is absent, OpenSSH still applies its system config, local login user, default
+keys and agent.
 
 ### Command files & conditionals
 
@@ -280,9 +283,10 @@ Host leaf1
 ```
 
 `#Driver`, `#NatOs` and `#nat-os` are accepted too. A config that still carries a
-bare `Driver`/`NatOs` keyword keeps working: nat reads it, and hands `ssh` a
-private flattened copy with those lines demoted to comments, so the connection
-succeeds where plain `ssh -F` would have failed.
+bare `Driver`/`NatOs` keyword keeps working: nat adds a narrowly scoped
+`IgnoreUnknown` list for those metadata names and leaves the original config in
+place. Includes, Match blocks, tokens and platform-specific options therefore
+keep OpenSSH's own semantics.
 
 ### Custom parsers
 
@@ -290,7 +294,12 @@ A compiled binary has no JavaScript engine, so the Bun-era `--parsers ./pack.mjs
 module cannot be loaded. The same extension point is offered two ways, both of
 which a native binary can execute.
 
-**Declarative packs** — `--parsers <pack.json>`, repeatable, later sources win:
+**Declarative packs** — `--parsers <pack.json|directory>`, repeatable, later
+sources win. A directory loads its direct `*.json` files in lexical filename
+order, so names such as `10-base.json`, `50-team.json`, and `90-site.json` make
+layering explicit. Other files and nested directories are ignored; a directory
+with no JSON packs is an error. Later definitions replace the same
+driver/command key; the existing exact → glob → `*` matching order is unchanged.
 
 ```json
 {
@@ -305,7 +314,7 @@ which a native binary can execute.
           { "name": "name" },
           { "name": "state" },
           { "name": "up", "group": 2, "type": "boolean" },
-          { "name": "addresses", "group": 3, "split": "\\s+" }
+          { "name": "addresses", "group": 3, "split": "\\s+", "filter": "^[0-9A-Fa-f:.]+/\\d+$" }
         ]
       }
     }
@@ -317,8 +326,15 @@ A rule is one of: `fields` (named regex captures), `row` + `list` (repeated
 per-line matching), `table: true` / `keyValue: true` (reuse a built-in), or
 `lines: true`. Field options: `pattern`, `group`, `flags`, `type`
 (`string`|`number`|`boolean`) and `split` (turn one capture into an array). A
-key beginning with `//` is a comment. See
-[`examples/parsers.json`](examples/parsers.json).
+`filter` regex can retain only matching items in a split array. A key beginning
+with `//` is a comment. See
+[`examples/parsers.json`](examples/parsers.json) and the layered
+[`examples/parsers.d/`](examples/parsers.d/) directory.
+
+The JSON format and directory rules are also supported by the Bun version of
+nat, making a parser directory portable between the source and native tools.
+Individual Bun `.mjs` modules remain available there for runtime-specific code;
+portable packs should use JSON (or an external program for arbitrary logic).
 
 **External programs** — `--parser-cmd <program>`, for anything a regex cannot do:
 
@@ -392,6 +408,7 @@ so authoring a parser is a tight local loop:
 ```sh
 ssh leaf1 df -h | nat parse -c "df -h" --driver linux --json | jq '.rows[]'
 nat parse -c "ip -br addr" -i fixtures/ip-br.txt --parsers ./examples/parsers.json --json
+nat parse -c "ip -br addr" -i fixtures/ip-br.txt --parsers ./examples/parsers.d --json
 ```
 
 This is also the simplest way to add a regression test: capture a fixture once,
@@ -402,7 +419,8 @@ then assert on `nat parse … --json`.
 `ProxyJump` from the ssh config is honoured automatically — OpenSSH resolves the
 whole chain, including each hop's own config. Override it with `--jump <host>`.
 Use `--jump-shell` to tunnel through the jump host's interactive shell (a nested
-`ssh` typed into it) instead.
+`ssh` typed into it) instead. Password-authenticated hops resolve their own
+`nat cred` entry, so a bastion and final target may use different passwords.
 
 ### Secrets resolution
 
@@ -423,6 +441,9 @@ keychain:
 
 Set `NAT_CREDENTIAL_BACKEND=keychain|libsecret|file` to force one explicitly
 (for example `file` on a headless Linux host with no unlocked desktop keyring).
+Automatic file fallback is announced with a warning when a secret is stored.
+The key names and Linux libsecret schema match the Bun implementation, so the
+native binary can read credentials previously written by `Bun.secrets`.
 
 A resolved secret reaches `ssh` through a generated askpass helper
 (`SSH_ASKPASS` + `SSH_ASKPASS_REQUIRE=force`), so it never appears in an argv the
@@ -463,6 +484,12 @@ Host keys are checked. The Bun implementation accepted any key silently; nat
 defaults to `accept-new` (trust on first use, recorded in `known_hosts`) and
 `--host-key-checking no` restores the old posture.
 
+nat also asks `ssh -G` for each host's effective user, hostname, port, identity
+files and jump chain. This keeps credential lookup and `inventory show` aligned
+with `Match exec`, `Match localuser`, canonical/final passes, macOS
+`UseKeychain`, Linux agent settings and OpenSSH's implicit local username. If a
+non-OpenSSH client does not implement `-G`, nat falls back to its local reader.
+
 ## Data location
 
 Runs are stored under the first existing of `$NAT_HOME` (an explicit override,
@@ -487,8 +514,8 @@ disk.
 | SSH | `ssh2` (pure JS) | the system `ssh` client | a static binary has no hash/cipher/KEX primitives; OpenSSH is the reference implementation and brings ProxyJump, `known_hosts`, agent support and legacy KEX for old gear |
 | Storage | `bun:sqlite` | append-only JSONL per run | no native SQLite to bind, and no writer lock to contend for |
 | Secrets | `Bun.secrets` | `security` / `secret-tool` / 0600 file | the same OS stores, through the tools the platforms ship |
-| Driver keyword | `Driver sonic` | `#nat-driver sonic` | OpenSSH refuses a config with an unknown keyword; the old form still works via a flattened copy |
-| Custom parsers | `--parsers pack.mjs` | `--parsers pack.json`, `--parser-cmd prog` | no engine to run a module in |
+| Driver keyword | `Driver sonic` | `#nat-driver sonic` | OpenSSH refuses an unknown keyword; the old form still works through a scoped `IgnoreUnknown` option without flattening the config |
+| Custom parsers | modules plus portable JSON files/directories | the same JSON files/directories, plus `--parser-cmd prog` | directory packs are shared; arbitrary code uses an external process because no JS engine is embedded |
 | Host keys | accepted silently | `accept-new`, configurable | ssh's own checking, on by default |
 | Args | `util.parseArgs` | nat's own parser | names an unknown flag instead of throwing a generic error |
 | New | — | `nat doctor`, `--no-multiplex`, `--host-key-checking`, `--ssh-option`, `--verbose` | the transport is now visible, so it is worth exposing |

@@ -46,7 +46,8 @@ Run options:
   --watch               Stream events live while running, instead of printing
                         the output once the run finishes
   --parse               Parse command output into structured objects
-  --parsers PACK        Declarative parser pack (JSON file; repeatable, later wins)
+  --parsers SOURCE      JSON pack or directory of *.json packs (repeatable;
+                        filenames load in order; later same-key definitions win)
   --parser-cmd PROG     Parse with an external program: it receives
                         {host,command,driver,raw} as JSON on stdin and prints
                         one JSON value on stdout
@@ -73,7 +74,7 @@ Parse options (offline; parse saved/piped output without SSH):
   --command, -c CMD     Command the output belongs to (selects the parser)
   --input, -i FILE      Read output from FILE (default: stdin)
   --driver OS           Driver / target OS to scope parsers (default generic)
-  --parsers PACK        Declarative parser pack (repeatable)
+  --parsers SOURCE      JSON pack or directory of *.json packs (repeatable)
   --parser-cmd PROG     Parse with an external program
   --json                Emit only the parsed object as one JSON line
 `;
@@ -157,7 +158,8 @@ Usage:
   nat cred delete <host> [--user USER] [--kind password|passphrase]
 
 Secrets live in the macOS keychain (\`security\`) or libsecret
-(\`secret-tool\`); without either, in a 0600 file under nat's config directory.
+(\`secret-tool\`); without either, in a 0600 file under nat's config directory
+with a warning when stored. Existing Bun.secrets entries use the same keys.
 \`nat doctor\` reports which one this host uses.`;
 
 export const HELP_DOCTOR = `nat doctor — report the environment nat is running in

@@ -1,0 +1,32 @@
+{
+  "linux": {
+    "ip -br addr": {
+      "kind": "linux.briefAddresses",
+      "list": "interfaces",
+      "count": true,
+      "row": {
+        "pattern": "^(\\S+)\\s+(\\S+)\\s*(.*)$",
+        "fields": [
+          { "name": "name" },
+          { "name": "state" },
+          { "name": "up", "group": 2, "type": "boolean" },
+          { "name": "addresses", "group": 3, "split": "\\s+", "filter": "^[0-9A-Fa-f:.]+/\\d+$" }
+        ]
+      }
+    },
+    "ip -br a": {
+      "kind": "linux.briefAddresses",
+      "list": "interfaces",
+      "count": true,
+      "row": {
+        "pattern": "^(\\S+)\\s+(\\S+)\\s*(.*)$",
+        "fields": [
+          { "name": "name" },
+          { "name": "state" },
+          { "name": "up", "group": 2, "type": "boolean" },
+          { "name": "addresses", "group": 3, "split": "\\s+", "filter": "^[0-9A-Fa-f:.]+/\\d+$" }
+        ]
+      }
+    }
+  }
+}

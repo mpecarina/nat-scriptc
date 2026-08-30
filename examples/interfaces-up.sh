@@ -4,7 +4,7 @@
 # their IPv4 addresses.
 #
 # This is the whole extensibility loop in one script: a declarative parser pack
-# (examples/parsers.json) turns `ip -br addr` text into JSON, `nat --json` emits
+# (examples/parsers.d/) turns `ip -br addr` text into JSON, `nat --json` emits
 # the nested result, and `jq` consumes the parser's structured `.parsed` output.
 # The script is meaningless without the pack — its filter depends on the shape
 # `{ interfaces: [{ name, up, addresses: ["10.0.0.1/24", …] }] }`.
@@ -40,7 +40,7 @@ printf 'host\tinterface\tstate\tipv4\n'
 nat run "$host" \
   --driver linux \
   -c "ip -br addr" \
-  --parsers "$here/parsers.json" \
+  --parsers "$here/parsers.d" \
   --json "$@" \
 | jq -r '
     .results[]

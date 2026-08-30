@@ -1,0 +1,12 @@
+{
+  "linux": {
+    "free -m": {
+      "kind": "linux.memory",
+      "fields": {
+        "totalMb": { "pattern": "^Mem:\\s+(\\d+)", "type": "number", "flags": "m" },
+        "usedMb": { "pattern": "^Mem:\\s+\\d+\\s+(\\d+)", "type": "number", "flags": "m" },
+        "freeMb": { "pattern": "^Mem:\\s+\\d+\\s+\\d+\\s+(\\d+)", "type": "number", "flags": "m" }
+      }
+    }
+  }
+}

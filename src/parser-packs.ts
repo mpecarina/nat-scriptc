@@ -30,7 +30,8 @@
  *           "fields": [{ "name": "prefix" }, { "name": "nextHop" }]
  *         },
  *         // a field may also carry "type": number|boolean and
- *         // "split": "<regex>", which turns one capture into an array
+ *         // "split": "<regex>", which turns one capture into an array;
+ *         // "filter": "<regex>" can then keep only matching array items
  *         "count": true
  *       },
  *       "df*": { "table": true },
@@ -39,7 +40,8 @@
  *   }
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 import { Json, jarr, jbool, jnull, jnum, jobj, jstr, parseJson, renderJson } from "./json.ts";
 import { ParserContext } from "./models.ts";
@@ -67,13 +69,16 @@ class FieldSpec {
   type: string;
   /** When set, the capture splits on this pattern into an array. */
   split: RegExp | null;
+  /** Optional whole-item filter applied after splitting. */
+  filter: RegExp | null;
 
-  constructor(name: string, pattern: RegExp, group: number, type: string, split: RegExp | null) {
+  constructor(name: string, pattern: RegExp, group: number, type: string, split: RegExp | null, filter: RegExp | null) {
     this.name = name;
     this.pattern = pattern;
     this.group = group;
     this.type = type;
     this.split = split;
+    this.filter = filter;
   }
 }
 
@@ -84,12 +89,15 @@ class ColumnSpec {
   type: string;
   /** When set, the capture splits on this pattern into an array. */
   split: RegExp | null;
+  /** Optional whole-item filter applied after splitting. */
+  filter: RegExp | null;
 
-  constructor(name: string, group: number, type: string, split: RegExp | null) {
+  constructor(name: string, group: number, type: string, split: RegExp | null, filter: RegExp | null) {
     this.name = name;
     this.group = group;
     this.type = type;
     this.split = split;
+    this.filter = filter;
   }
 }
 
@@ -142,12 +150,13 @@ function readType(node: Json): string {
 }
 
 /** A capture split into an array of typed values (an address or member list). */
-function splitValue(raw: string, type: string, separator: RegExp): Json {
+function splitValue(raw: string, type: string, separator: RegExp, filter: RegExp | null): Json {
   const list = jarr();
   const trimmed = raw.trim();
   if (trimmed === "") return list;
   for (const piece of trimmed.split(separator)) {
-    if (piece !== "") list.push(typedValue(piece, type));
+    const item = piece.trim();
+    if (item !== "" && (filter === null || filter.test(item))) list.push(typedValue(item, type));
   }
   return list;
 }
@@ -184,6 +193,7 @@ function compileRule(spec: Json, where: string): PackRule {
       const groupIndex = field.kind === "str" ? 1 : Math.trunc(field.num("group", 1));
       const type = field.kind === "str" ? TYPE_STRING : readType(field);
       const split = field.kind === "str" ? "" : field.str("split", "");
+      const filter = field.kind === "str" ? "" : field.str("filter", "");
       rule.fields.push(
         new FieldSpec(
           name,
@@ -191,6 +201,7 @@ function compileRule(spec: Json, where: string): PackRule {
           groupIndex,
           type,
           split === "" ? null : compileRegExp(split, "", `${where}.fields.${name}.split`),
+          filter === "" ? null : compileRegExp(filter, "", `${where}.fields.${name}.filter`),
         ),
       );
     }
@@ -210,12 +221,14 @@ function compileRule(spec: Json, where: string): PackRule {
         const groupIndex = column.kind === "str" ? i + 1 : Math.trunc(column.num("group", i + 1));
         const type = column.kind === "str" ? TYPE_STRING : readType(column);
         const split = column.kind === "str" ? "" : column.str("split", "");
+        const filter = column.kind === "str" ? "" : column.str("filter", "");
         rule.columns.push(
           new ColumnSpec(
             name,
             groupIndex,
             type,
             split === "" ? null : compileRegExp(split, "", `${where}.row.fields[${i}].split`),
+            filter === "" ? null : compileRegExp(filter, "", `${where}.row.fields[${i}].filter`),
           ),
         );
       }
@@ -251,7 +264,7 @@ function ruleParser(rule: PackRule): ParserFn {
       const captured = group(m, field.group);
       node.set(
         field.name,
-        field.split === null ? typedValue(captured, field.type) : splitValue(captured, field.type, field.split),
+        field.split === null ? typedValue(captured, field.type) : splitValue(captured, field.type, field.split, field.filter),
       );
     }
 
@@ -285,7 +298,7 @@ function ruleParser(rule: PackRule): ParserFn {
               column.name,
               column.split === null
                 ? typedValue(captured, column.type)
-                : splitValue(captured, column.type, column.split),
+                : splitValue(captured, column.type, column.split, column.filter),
             );
           }
         }
@@ -342,6 +355,9 @@ export function loadParserPack(specPath: string): ParserTable {
   if (!existsSync(resolved)) {
     throw new ParserPackError(`parser pack not found: ${resolved}`);
   }
+  if (statSync(resolved).isDirectory()) {
+    throw new ParserPackError(`parser pack is a directory: ${resolved}`);
+  }
   let root: Json;
   try {
     root = parseJson(readFileSync(resolved, "utf8"));
@@ -352,12 +368,36 @@ export function loadParserPack(specPath: string): ParserTable {
   return compileParserPack(root, resolved);
 }
 
-/** Read and merge every `--parsers` source, later sources winning. */
+/**
+ * Expand one portable parser source. A directory contributes its direct
+ * `*.json` files in lexical filename order; other files and subdirectories are
+ * ignored. This is deliberately non-recursive so adding a fixture, node_modules
+ * tree or archived pack cannot silently change a production parser set.
+ */
+export function parserPackFiles(specPath: string): string[] {
+  const resolved = expandUser(specPath);
+  if (!existsSync(resolved)) throw new ParserPackError(`parser pack not found: ${resolved}`);
+  if (!statSync(resolved).isDirectory()) return [resolved];
+
+  const files: string[] = [];
+  const names = readdirSync(resolved).sort();
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    const candidate = join(resolved, name);
+    if (statSync(candidate).isFile()) files.push(candidate);
+  }
+  if (files.length === 0) {
+    throw new ParserPackError(`parser directory contains no .json packs: ${resolved}`);
+  }
+  return files;
+}
+
+/** Read and merge file/directory sources; later definitions replace the same rule key. */
 export function loadParserPacks(specs: string[]): ParserTable {
   const table = new ParserTable();
   for (const spec of specs) {
     if (spec.trim() === "") continue;
-    table.merge(loadParserPack(spec.trim()));
+    for (const file of parserPackFiles(spec.trim())) table.merge(loadParserPack(file));
   }
   return table;
 }

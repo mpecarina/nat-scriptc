@@ -22,6 +22,7 @@ import {
   SshConnection,
   TransportOptions,
   TransportWorkspace,
+  resolveEffectiveHost,
   splitJumpSpec,
 } from "./transport.ts";
 import {
@@ -231,6 +232,55 @@ function jumpShellHost(inventory: Inventory, spec: string): HostConfig {
   return host;
 }
 
+/** Explicit user from `[user@]host[:port]`, or "" when ssh_config owns it. */
+function jumpSpecUser(spec: string): string {
+  const at = spec.lastIndexOf("@");
+  return at < 0 ? "" : spec.slice(0, at);
+}
+
+/** Last path component, useful because ssh may expand `~` before prompting. */
+function pathTail(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash < 0 ? path : path.slice(slash + 1);
+}
+
+/**
+ * Give each ProxyJump child its own stored password/passphrase. The Bun
+ * implementation opened every hop itself and therefore resolved credentials
+ * per hop; OpenSSH descendants share one askpass helper, so prompt fragments
+ * provide the equivalent routing without putting any secret in an argv/file.
+ */
+function addProxyJumpSecrets(
+  inventory: Inventory,
+  target: ConnectionTarget,
+  spec: string,
+  transport: TransportOptions,
+): void {
+  for (const hopSpec of splitJumpSpec(spec)) {
+    const explicitUser = jumpSpecUser(hopSpec);
+    const explicitPort = jumpShellPort(hopSpec);
+    let hop = jumpShellHost(inventory, hopSpec);
+    hop = resolveEffectiveHost(transport, hop, explicitUser, explicitPort, "");
+
+    const password = resolvePassword(hop.alias, hop.user, "");
+    // An empty mapped value is intentional: if the target has a password but a
+    // hop does not, never offer the target's secret to the jump host.
+    target.addPromptSecret(`${hop.alias}'s password`, password);
+    if (hop.hostname !== hop.alias) target.addPromptSecret(`${hop.hostname}'s password`, password);
+
+    const passphrase = resolvePassphrase(hop.alias, hop.user, "");
+    if (passphrase === "" || hop.identityFiles.length === 0) continue;
+    // The Bun transport could offer one privateKey per connection. Route the
+    // first effective IdentityFile the same way and leave the remaining keys to
+    // OpenSSH's agent/platform keychain handling.
+    for (const identity of hop.identityFiles.slice(0, 1)) {
+      target.addPromptSecret(identity, passphrase);
+      const tail = pathTail(identity);
+      if (tail !== identity) target.addPromptSecret(tail, passphrase);
+    }
+  }
+}
+
 /** Open the connection and, when the driver calls for it, its shell session. */
 async function prepareSession(
   inventory: Inventory,
@@ -251,16 +301,20 @@ async function prepareSession(
       throw new ConnectionError("--jump-shell requires a jump host (ProxyJump or --jump)");
     }
     const finalSpec = hops[hops.length - 1];
-    const finalHop = jumpShellHost(inventory, finalSpec);
-    const target = new ConnectionTarget(finalHop);
+    let finalHop = jumpShellHost(inventory, finalSpec);
     const explicitAt = finalSpec.lastIndexOf("@");
+    const explicitUser = explicitAt >= 0 ? finalSpec.slice(0, explicitAt) : "";
+    const explicitPort = jumpShellPort(finalSpec);
+    const priorHops = hops.length > 1 ? hops.slice(0, hops.length - 1).join(",") : "";
+    finalHop = resolveEffectiveHost(transport, finalHop, explicitUser, explicitPort, priorHops);
+    const target = new ConnectionTarget(finalHop);
     if (explicitAt >= 0) target.userOverride = finalSpec.slice(0, explicitAt);
-    target.portOverride = jumpShellPort(finalSpec);
+    target.portOverride = explicitPort;
     // The jump host authenticates on its own account, so it gets its own
     // stored secret rather than the target's.
     target.password = resolvePassword(finalHop.alias, finalHop.user, "");
     target.passphrase = resolvePassphrase(finalHop.alias, finalHop.user, "");
-    if (hops.length > 1) target.jumpOverride = hops.slice(0, hops.length - 1).join(",");
+    if (priorHops !== "") target.jumpOverride = priorHops;
     const connection = new SshConnection(transport, workspace, target);
     await connection.open();
 
@@ -292,6 +346,7 @@ async function prepareSession(
   target.password = password;
   target.passphrase = resolvePassphrase(host.alias, host.user, "");
   if (options.jump !== "") target.jumpOverride = options.jump;
+  addProxyJumpSecrets(inventory, target, host.proxyJump, transport);
   const connection = new SshConnection(transport, workspace, target);
   await connection.open();
   const prepared = new PreparedSession(connection);
@@ -352,6 +407,7 @@ export async function runHost(
   let host: HostConfig;
   try {
     host = resolveHost(inventory.config, hostAlias);
+    host = resolveEffectiveHost(transport, host, options.username, -1, options.jump);
   } catch (err) {
     const message = err instanceof Error ? err.message : "could not resolve host";
     emit(EVENT_HOST_ERROR, message, -1, "", null);

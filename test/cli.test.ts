@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -188,6 +188,28 @@ describe("inventory", () => {
     assert.notEqual(result.code, 0);
     assert.ok(result.stderr.includes("SSH config not found"));
   });
+
+  test("a missing default user config still permits literal OpenSSH hosts", () => {
+    const base = mkdtempSync(join(tmpdir(), "nat-no-user-config-"));
+    const home = join(base, "home");
+    const replies = join(base, "replies");
+    mkdirSync(home, { recursive: true });
+    mkdirSync(replies, { recursive: true });
+    writeFileSync(join(replies, "cmd_uptime"), "up 3 days\n");
+    const result = spawnSync(process.execPath, [ENTRY, "run", "literal-host", "-c", "uptime", "--json"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: home,
+        NAT_HOME: join(base, "nat-home"),
+        NAT_SSH_BIN: FAKE_SSH,
+        NAT_FAKE_DIR: replies,
+        NAT_CREDENTIAL_BACKEND: "file",
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).results[0].hostAlias, "literal-host");
+  });
 });
 
 describe("end-to-end runs", () => {
@@ -295,6 +317,24 @@ describe("end-to-end runs", () => {
     const parsed = JSON.parse(result.stdout).results[0].commands[0].parsed;
     assert.deepEqual(parsed, { kind: "custom", v: "9.9.9" });
   });
+
+  test("a parser directory is accepted by the run command", () => {
+    const lab = new Lab();
+    lab.reply("show version", "Version: 9.9.9\n");
+    const directory = join(lab.home, "parsers.d");
+    mkdirSync(directory);
+    writeFileSync(join(directory, "10-base.json"), JSON.stringify({ sonic: { "show version": { kind: "base" } } }));
+    writeFileSync(
+      join(directory, "90-site.json"),
+      JSON.stringify({ sonic: { "show version": { kind: "site", fields: { v: { pattern: "Version:\\s*(\\S+)" } } } } }),
+    );
+
+    const result = lab.run([
+      "--ssh-config", lab.config, "run", "leaf1", "-c", "show version", "--parsers", directory, "--json",
+    ]);
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).results[0].commands[0].parsed, { kind: "site", v: "9.9.9" });
+  });
 });
 
 describe("run history", () => {
@@ -375,6 +415,7 @@ describe("credentials", () => {
     const set = lab.run(["cred", "set", "leaf1", "--user", "admin", "--secret", "hunter2"]);
     assert.equal(set.code, 0);
     assert.ok(set.stdout.includes("stored password for admin@leaf1"));
+    assert.ok(set.stderr.includes("warning: no OS keyring found"));
 
     assert.equal(lab.run(["cred", "get", "leaf1", "--user", "admin"]).stdout, "(secret present)\n");
 
@@ -394,6 +435,64 @@ describe("credentials", () => {
     const result = lab.run(["cred", "set", "web2"]);
     assert.notEqual(result.code, 0);
     assert.ok(result.stderr.includes("could not determine user"));
+  });
+
+  test("infers a stored-password account through OpenSSH Match rules", () => {
+    const base = mkdtempSync(join(tmpdir(), "nat-cred-ssh-g-"));
+    const config = join(base, "config");
+    const home = join(base, "home");
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      config,
+      ["Host matched", "    HostName 192.0.2.70", 'Match exec "test x = x"', "    User match-user"].join("\n") + "\n",
+    );
+    const result = spawnSync(
+      process.execPath,
+      [ENTRY, "--ssh-config", config, "cred", "set", "matched", "--secret", "hunter2"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NAT_HOME: home,
+          NAT_SSH_BIN: "ssh",
+          NAT_CREDENTIAL_BACKEND: "file",
+        },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(result.stdout.includes("stored password for match-user@matched"));
+  });
+
+  test("Linux writes Bun.secrets-compatible libsecret attributes", () => {
+    const base = mkdtempSync(join(tmpdir(), "nat-secret-tool-"));
+    const tool = join(base, "secret-tool");
+    const argsLog = join(base, "args");
+    const inputLog = join(base, "input");
+    writeFileSync(
+      tool,
+      '#!/bin/sh\nprintf "%s\\n" "$*" > "$NAT_SECRET_TOOL_ARGS"\ncat > "$NAT_SECRET_TOOL_INPUT"\n',
+    );
+    chmodSync(tool, 0o700);
+    const result = spawnSync(
+      process.execPath,
+      [ENTRY, "cred", "set", "leaf1", "--user", "admin", "--secret", "hunter2"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${base}:${process.env["PATH"] ?? ""}`,
+          NAT_HOME: join(base, "home"),
+          NAT_CREDENTIAL_BACKEND: "libsecret",
+          NAT_SECRET_TOOL_ARGS: argsLog,
+          NAT_SECRET_TOOL_INPUT: inputLog,
+        },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const args = readFileSync(argsLog, "utf8");
+    assert.ok(args.includes("service nat:leaf1:password account admin"));
+    assert.ok(args.includes("xdg:schema com.oven-sh.bun.Secret"));
+    assert.equal(readFileSync(inputLog, "utf8"), "hunter2");
   });
 });
 

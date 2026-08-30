@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, test } from "node:test";
@@ -14,6 +14,7 @@ import {
   TransportOptions,
   TransportWorkspace,
   connectErrorMessage,
+  resolveEffectiveHost,
   splitJumpSpec,
 } from "../src/transport.ts";
 import { enterSonicCli, openShell, runShellCommand } from "../src/session.ts";
@@ -89,6 +90,53 @@ describe("jump specifications", () => {
   test("splits and trims a ProxyJump chain", () => {
     assert.deepEqual(splitJumpSpec("a, b ,c"), ["a", "b", "c"]);
     assert.deepEqual(splitJumpSpec(""), []);
+  });
+});
+
+describe("system ssh_config resolution", () => {
+  test("uses OpenSSH for Match exec, defaults and legacy nat metadata", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nat-ssh-g-"));
+    const configPath = join(dir, "config");
+    writeFileSync(
+      configPath,
+      [
+        "Host audit",
+        "    HostName 192.0.2.44",
+        "    Driver sonic",
+        "    IdentityFile none",
+        'Match originalhost audit exec "test x = x"',
+        "    User matched-user",
+        "    Port 2207",
+        "Host default-audit",
+        "    HostName 192.0.2.45",
+      ].join("\n") + "\n",
+    );
+
+    const options = new TransportOptions();
+    options.configPath = configPath;
+    options.ignoreUnknown = "Driver,NatOs,Nat-Driver,Nat-Os";
+    const parsed = new HostConfig("audit");
+    parsed.hostname = "192.0.2.44";
+    parsed.targetOs = "sonic";
+
+    const effective = resolveEffectiveHost(options, parsed, "", -1, "");
+    assert.equal(effective.hostname, "192.0.2.44");
+    assert.equal(effective.user, "matched-user");
+    assert.equal(effective.port, 2207);
+    assert.deepEqual(effective.identityFiles, []);
+    assert.equal(effective.targetOs, "sonic", "nat-only metadata survives OpenSSH resolution");
+
+    const defaultUser = resolveEffectiveHost(options, new HostConfig("default-audit"), "", -1, "");
+    assert.equal(defaultUser.user, userInfo().username, "OpenSSH supplies the implicit local login user");
+  });
+
+  test("an explicit login user wins even when ssh -G is unavailable", () => {
+    const options = new TransportOptions();
+    options.sshBin = join(tmpdir(), "nat-no-such-ssh-g");
+    const parsed = new HostConfig("audit");
+    parsed.user = "configured-user";
+    const effective = resolveEffectiveHost(options, parsed, "override-user", -1, "");
+    assert.equal(effective.user, "override-user");
   });
 });
 

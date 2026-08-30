@@ -32,7 +32,9 @@ import {
 import { parseCommandSpec, readCommandText } from "../src/command-files.ts";
 import {
   CredentialError,
+  BACKEND_FILE,
   backendDescription,
+  credentialBackend,
   deleteSecret,
   getSecret,
   normalizeKind,
@@ -50,7 +52,7 @@ import {
   runMany,
   runOptionsJson,
 } from "../src/runner.ts";
-import { listHostAliases, renderFlattenedConfig } from "../src/sshconfig.ts";
+import { configuredIgnoreUnknownPatterns, listHostAliases } from "../src/sshconfig.ts";
 import {
   RunStore,
   STATUS_COMPLETED,
@@ -60,7 +62,7 @@ import {
   runArgs,
 } from "../src/store.ts";
 import { indentLines } from "../src/text.ts";
-import { ConnectionError, TransportOptions, TransportWorkspace } from "../src/transport.ts";
+import { ConnectionError, TransportOptions, TransportWorkspace, resolveEffectiveHost } from "../src/transport.ts";
 import {
   HELP_CRED,
   HELP_DOCTOR,
@@ -209,7 +211,7 @@ function cmdInventory(args: string[], sshConfig: string): number {
   if (sub === "show") {
     if (args.length < 2 || args[1] === "") return fail("inventory show requires a host alias");
     const inventory = loadInventory(sshConfig);
-    const host = resolveHost(inventory.config, args[1]);
+    const host = resolveInventoryHostWithSsh(inventory, args[1], sshConfig);
     process.stdout.write(`alias:        ${host.alias}\n`);
     process.stdout.write(`hostname:     ${host.hostname}\n`);
     process.stdout.write(`user:         ${host.user === "" ? "(default)" : host.user}\n`);
@@ -279,22 +281,42 @@ function resultsEnvelope(runId: string, results: HostRunResult[]): Json {
 /* ------------------------------ ssh transport ----------------------------- */
 
 /**
- * Decide which config file ssh should read. A JSON inventory has no file, and a
- * config carrying legacy bare `Driver` keywords is one ssh would refuse, so
- * both get a private flattened copy inside the workspace.
+ * Decide which config file ssh should read. A JSON inventory has no file, so it
+ * gets a private config inside the workspace. Real configs remain in place:
+ * the transport's narrowly scoped IgnoreUnknown option lets OpenSSH skip the
+ * legacy nat driver keywords without flattening away Include/Match semantics.
  */
-function prepareSshConfigFile(inventory: Inventory, workspace: TransportWorkspace, explicitPath: string): string {
+function prepareSshConfigFile(
+  inventory: Inventory,
+  workspace: TransportWorkspace,
+  explicitPath: string,
+  transport: TransportOptions,
+): string {
+  if (inventory.config.hasBareNatKeywords) {
+    const ignored = ["Driver", "NatOs", "Nat-Driver", "Nat-Os"];
+    for (const pattern of configuredIgnoreUnknownPatterns(inventory.config)) {
+      if (!ignored.includes(pattern)) ignored.push(pattern);
+    }
+    transport.ignoreUnknown = ignored.join(",");
+  }
   if (inventory.syntheticText !== "") {
     const path = workspace.reserve(".ssh_config");
     writeFileSync(path, inventory.syntheticText);
     return path;
   }
-  if (inventory.config.hasBareNatKeywords) {
-    const path = workspace.reserve(".ssh_config");
-    writeFileSync(path, renderFlattenedConfig(inventory.config));
-    return path;
-  }
   return explicitPath === "" ? "" : inventory.path;
+}
+
+/** Resolve one inventory host through the same OpenSSH config used to connect. */
+function resolveInventoryHostWithSsh(inventory: Inventory, alias: string, explicitPath: string) {
+  const workspace = new TransportWorkspace();
+  try {
+    const transport = new TransportOptions();
+    transport.configPath = prepareSshConfigFile(inventory, workspace, explicitPath, transport);
+    return resolveEffectiveHost(transport, resolveHost(inventory.config, alias), "", -1, "");
+  } finally {
+    workspace.dispose();
+  }
 }
 
 /* ---------------------------------- run ---------------------------------- */
@@ -489,7 +511,7 @@ async function cmdRun(args: string[], sshConfig: string): Promise<number> {
 
   const workspace = new TransportWorkspace();
   const transport = buildTransportOptions(parsed);
-  transport.configPath = prepareSshConfigFile(inventory, workspace, sshConfig);
+  transport.configPath = prepareSshConfigFile(inventory, workspace, sshConfig, transport);
 
   const runId = randomUUID().replace(/-/g, "");
   const commandSources: string[] = [];
@@ -754,7 +776,8 @@ async function cmdCred(args: string[], sshConfig: string): Promise<number> {
   let user = parsed.str("user", "");
   if (user === "") {
     try {
-      user = resolveHost(loadInventory(sshConfig).config, alias).user;
+      const inventory = loadInventory(sshConfig);
+      user = resolveInventoryHostWithSsh(inventory, alias, sshConfig).user;
     } catch (err) {
       // The inventory is optional for credential operations.
     }
@@ -769,6 +792,9 @@ async function cmdCred(args: string[], sshConfig: string): Promise<number> {
       const secret = provided !== "" ? provided : await promptSecret(`${kind} for ${user}@${alias}: `);
       setSecret(alias, user, secret, kind);
       process.stdout.write(`stored ${kind} for ${user}@${alias}\n`);
+      if (credentialBackend() === BACKEND_FILE) {
+        process.stderr.write(`nat: warning: no OS keyring found; secret stored in ${backendDescription()}\n`);
+      }
       return 0;
     }
     if (sub === "delete") {

@@ -6,6 +6,7 @@ import { describe, test } from "node:test";
 
 import {
   computeHost,
+  configuredIgnoreUnknownPatterns,
   keywordValue,
   keywordValues,
   listHostAliases,
@@ -104,6 +105,14 @@ describe("ssh config parsing", () => {
     const config = parseSshConfigText(["Host leaf1", "  Driver sonic"].join("\n"), "");
     assert.equal(keywordValue(computeHost(config, "leaf1"), "driver", ""), "sonic");
     assert.equal(config.hasBareNatKeywords, true);
+  });
+
+  test("retains the user's IgnoreUnknown patterns when legacy metadata is added", () => {
+    const config = parseSshConfigText(
+      ["IgnoreUnknown UseKeychain,VendorOption*", "Host leaf1", "  Driver sonic"].join("\n"),
+      "",
+    );
+    assert.deepEqual(configuredIgnoreUnknownPatterns(config), ["UseKeychain", "VendorOption*"]);
   });
 
   test("flattening demotes nat keywords to comments ssh ignores", () => {

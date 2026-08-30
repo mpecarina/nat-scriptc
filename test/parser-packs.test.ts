@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -36,13 +36,14 @@ describe("declarative parser packs", () => {
               version: { pattern: "Version:\\s*(\\S+)" },
               build: { pattern: "Build:\\s*(\\d+)", type: "number" },
               healthy: { pattern: "Healthy:\\s*(\\S+)", type: "boolean" },
+              members: { pattern: "Members:\\s*(.*)", split: ",\\s*", filter: "^[ab]$" },
             },
           },
         },
       }),
     );
-    const raw = "Version: 4.1.0\nBuild: 42\nHealthy: yes\n";
-    assert.equal(run(table, "sonic", "show version", raw), '{"kind":"demo.version","version":"4.1.0","build":42,"healthy":true}');
+    const raw = "Version: 4.1.0\nBuild: 42\nHealthy: yes\nMembers: a, skip, b\n";
+    assert.equal(run(table, "sonic", "show version", raw), '{"kind":"demo.version","version":"4.1.0","build":42,"healthy":true,"members":["a","b"]}');
   });
 
   test("omits a field whose pattern does not match", () => {
@@ -71,6 +72,27 @@ describe("declarative parser packs", () => {
     assert.equal(
       run(table, "linux", "show routes", raw),
       '{"kind":"demo.routes","routes":[{"prefix":"10.0.0.0/24","nextHop":"10.0.0.1"},{"prefix":"10.1.0.0/24","nextHop":"10.0.0.2"}],"count":2}',
+    );
+  });
+
+  test("split fields can filter non-value tokens found in real command output", () => {
+    const table = pack(JSON.stringify({
+      linux: {
+        "ip -br addr": {
+          list: "interfaces",
+          row: {
+            pattern: "^(\\S+)\\s+(\\S+)\\s*(.*)$",
+            fields: [
+              { name: "name" },
+              { name: "addresses", group: 3, split: "\\s+", filter: "^[0-9A-Fa-f:.]+/\\d+$" },
+            ],
+          },
+        },
+      },
+    }));
+    assert.equal(
+      run(table, "linux", "ip -br addr", "eno1 UP 10.0.10.1/16 metric 100 fe80::3617:ebff:fed5:7c21/64\n"),
+      '{"interfaces":[{"name":"eno1","addresses":["10.0.10.1/16","fe80::3617:ebff:fed5:7c21/64"]}]}',
     );
   });
 
@@ -106,6 +128,38 @@ describe("declarative parser packs", () => {
     assert.equal(run(table, "linux", "y", ""), '{"kind":"kept"}');
   });
 
+  test("a parser directory loads direct JSON packs in filename order", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nat-pack-dir-"));
+    writeFileSync(join(dir, "10-base.json"), JSON.stringify({ linux: { x: { kind: "base" }, y: { kind: "kept" } } }));
+    writeFileSync(join(dir, "20-site.json"), JSON.stringify({ linux: { x: { kind: "site" } } }));
+    writeFileSync(join(dir, "README.md"), "ignored\n");
+    mkdirSync(join(dir, "nested"));
+    writeFileSync(join(dir, "nested", "broken.json"), "not json\n");
+    const table = loadParserPacks([dir]);
+    assert.equal(run(table, "linux", "x", ""), '{"kind":"site"}');
+    assert.equal(run(table, "linux", "y", ""), '{"kind":"kept"}');
+  });
+
+  test("directories compose with repeated file sources in argument order", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nat-pack-mixed-"));
+    const before = join(dir, "before.json");
+    const packs = join(dir, "packs");
+    const after = join(dir, "after.json");
+    mkdirSync(packs);
+    writeFileSync(before, JSON.stringify({ linux: { x: { kind: "before" }, y: { kind: "kept" } } }));
+    writeFileSync(join(packs, "50-directory.json"), JSON.stringify({ linux: { x: { kind: "directory" } } }));
+    writeFileSync(after, JSON.stringify({ linux: { x: { kind: "after" } } }));
+    const table = loadParserPacks([before, packs, after]);
+    assert.equal(run(table, "linux", "x", ""), '{"kind":"after"}');
+    assert.equal(run(table, "linux", "y", ""), '{"kind":"kept"}');
+  });
+
+  test("an empty parser directory is an actionable error", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nat-pack-empty-"));
+    writeFileSync(join(dir, "README.md"), "not a pack\n");
+    assert.throws(() => loadParserPacks([dir]), /parser directory contains no \.json packs/);
+  });
+
   test("reports a malformed pack by path and rule", () => {
     assert.throws(() => pack(JSON.stringify({ linux: { x: { fields: { a: {} } } } })), ParserPackError);
     assert.throws(() => pack(JSON.stringify({ linux: { x: { fields: { a: {} } } } })), /field 'a' has no pattern/);
@@ -114,6 +168,10 @@ describe("declarative parser packs", () => {
     assert.throws(
       () => pack(JSON.stringify({ linux: { x: { fields: { a: { pattern: "(a)", flags: "g" } } } } })),
       /flags 'g' and 'y' are not supported/,
+    );
+    assert.throws(
+      () => pack(JSON.stringify({ linux: { x: { fields: { a: { pattern: "(a)", split: ",", filter: "([" } } } } })),
+      /\.filter:/,
     );
     assert.throws(() => loadParserPacks(["/definitely/not/here.json"]), /parser pack not found/);
   });

@@ -69,6 +69,11 @@ export class Inventory {
 export function loadInventory(configPath: string): Inventory {
   const resolved = configPath === "" ? defaultSshConfigPath() : expandUser(configPath);
   if (!existsSync(resolved)) {
+    // A user config is optional to OpenSSH. Keep an empty inventory for literal
+    // hosts so `nat run host ...` still benefits from /etc/ssh/ssh_config,
+    // default keys, ssh-agent and the local login user. An explicitly requested
+    // file remains an error because silently ignoring a typo would be surprising.
+    if (configPath === "") return new Inventory(parseSshConfigText("", resolved), resolved);
     throw new InventoryError(`SSH config not found: ${resolved}`);
   }
   return new Inventory(parseSshConfigFile(resolved), resolved);

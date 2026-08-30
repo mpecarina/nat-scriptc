@@ -22,6 +22,8 @@ import { resolveRunPaths } from "./paths.ts";
 export class CredentialError extends Error {}
 
 const SERVICE_PREFIX = "nat";
+/** Schema used by Bun.secrets on Linux; retaining it keeps both tools interoperable. */
+const BUN_LIBSECRET_SCHEMA = "com.oven-sh.bun.Secret";
 
 export const BACKEND_KEYCHAIN = "keychain";
 export const BACKEND_LIBSECRET = "libsecret";
@@ -114,7 +116,17 @@ export function setSecret(host: string, user: string, secret: string, kind: stri
   if (backend === BACKEND_LIBSECRET) {
     const result = runProcessSync(
       "secret-tool",
-      ["store", "--label", service, "service", service, "account", user],
+      [
+        "store",
+        "--label",
+        `${service}/${user}`,
+        "service",
+        service,
+        "account",
+        user,
+        "xdg:schema",
+        BUN_LIBSECRET_SCHEMA,
+      ],
       secret,
       process.env,
     );

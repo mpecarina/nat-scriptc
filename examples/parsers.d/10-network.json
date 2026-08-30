@@ -1,6 +1,4 @@
 {
-  "//": "Portable declarative parsers shared by the Bun and native nat tools.",
-  "//1": "Pass this file or the examples/parsers.d directory to --parsers.",
   "linux": {
     "ip -br addr": {
       "kind": "linux.briefAddresses",
@@ -28,14 +26,6 @@
           { "name": "up", "group": 2, "type": "boolean" },
           { "name": "addresses", "group": 3, "split": "\\s+", "filter": "^[0-9A-Fa-f:.]+/\\d+$" }
         ]
-      }
-    },
-    "free -m": {
-      "kind": "linux.memory",
-      "fields": {
-        "totalMb": { "pattern": "^Mem:\\s+(\\d+)", "type": "number", "flags": "m" },
-        "usedMb": { "pattern": "^Mem:\\s+\\d+\\s+(\\d+)", "type": "number", "flags": "m" },
-        "freeMb": { "pattern": "^Mem:\\s+\\d+\\s+\\d+\\s+(\\d+)", "type": "number", "flags": "m" }
       }
     }
   }

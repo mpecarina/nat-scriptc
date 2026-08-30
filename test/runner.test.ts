@@ -138,6 +138,17 @@ const CONFIG = [
 ].join("\n") + "\n";
 
 describe("transport paths", () => {
+  test("legacy Driver metadata keeps the original config and its OpenSSH semantics", () => {
+    const config = CONFIG.replace("#nat-driver ios", "Driver ios");
+    const lab = new Lab(config);
+    lab.reply("uptime", "up 3 days\n");
+    const result = lab.run(["--ssh-config", lab.config, "run", "router1", "--no-ios-shell", "-c", "uptime"], {});
+    assert.equal(result.status, 0, result.stderr);
+    const argv = lab.argv();
+    assert.ok(argv.includes(`-F ${lab.config}`), "ssh reads the source config rather than a flattened copy");
+    assert.ok(argv.includes("IgnoreUnknown=Driver,NatOs,Nat-Driver,Nat-Os"));
+  });
+
   test("a configured ProxyJump stays in ssh_config", () => {
     const lab = new Lab(CONFIG);
     lab.reply("show version", "Version 1.2.3\n");
@@ -147,6 +158,73 @@ describe("transport paths", () => {
     assert.ok(argv.includes(`-F ${lab.config}`));
     assert.ok(argv.includes("leaf1"), "the alias lets ssh apply Host leaf1 and its ProxyJump/User");
     assert.ok(!argv.includes("-J bastion"), "config values are not re-spelled as overriding argv options");
+  });
+
+  test("ProxyJump and target use their own stored passwords", () => {
+    const lab = new Lab(CONFIG);
+    lab.reply("uptime", "up 3 days\n");
+    const credentialEnv = { NAT_CREDENTIAL_BACKEND: "file" };
+    assert.equal(
+      lab.run(
+        ["--ssh-config", lab.config, "cred", "set", "bastion", "--user", "jump", "--secret", "jump-secret"],
+        credentialEnv,
+      ).status,
+      0,
+    );
+    assert.equal(
+      lab.run(
+        ["--ssh-config", lab.config, "cred", "set", "leaf1", "--user", "admin", "--secret", "target-secret"],
+        credentialEnv,
+      ).status,
+      0,
+    );
+
+    const result = lab.run(
+      ["--ssh-config", lab.config, "run", "leaf1", "-c", "uptime", "--json"],
+      {
+        NAT_CREDENTIAL_BACKEND: "file",
+        NAT_FAKE_JUMP_HOST: "bastion",
+        NAT_FAKE_JUMP_PASSWORD: "jump-secret",
+        NAT_FAKE_PASSWORD: "target-secret",
+        NAT_SSH_PASSWORD: "",
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).results[0].commands[0].output, "up 3 days");
+  });
+
+  test("an explicit --jump uses the override host's stored password", () => {
+    const config = CONFIG + ["", "Host emergency", "    HostName 10.0.9.9", "    User rescue"].join("\n") + "\n";
+    const lab = new Lab(config);
+    lab.reply("uptime", "up 3 days\n");
+    const credentialEnv = { NAT_CREDENTIAL_BACKEND: "file" };
+    assert.equal(
+      lab.run(
+        ["--ssh-config", lab.config, "cred", "set", "emergency", "--user", "rescue", "--secret", "override-secret"],
+        credentialEnv,
+      ).status,
+      0,
+    );
+    assert.equal(
+      lab.run(
+        ["--ssh-config", lab.config, "cred", "set", "leaf1", "--user", "admin", "--secret", "target-secret"],
+        credentialEnv,
+      ).status,
+      0,
+    );
+
+    const result = lab.run(
+      ["--ssh-config", lab.config, "run", "leaf1", "--jump", "emergency", "-c", "uptime", "--json"],
+      {
+        NAT_CREDENTIAL_BACKEND: "file",
+        NAT_FAKE_JUMP_HOST: "emergency",
+        NAT_FAKE_JUMP_PASSWORD: "override-secret",
+        NAT_FAKE_PASSWORD: "target-secret",
+        NAT_SSH_PASSWORD: "",
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).results[0].commands[0].output, "up 3 days");
   });
 
   test("Port and IdentityFile stay in ssh_config for ssh token expansion", () => {
@@ -270,6 +348,23 @@ describe("transport paths", () => {
     );
     assert.equal(result.status, 0);
     assert.ok(lab.argv().includes("neteng@router1"));
+  });
+
+  test("--user selects that account's stored password", () => {
+    const lab = new Lab(CONFIG);
+    lab.reply("uptime", "up 3 days\n");
+    const stored = lab.run(
+      ["--ssh-config", lab.config, "cred", "set", "leaf1", "--user", "neteng", "--secret", "hunter2"],
+      { NAT_CREDENTIAL_BACKEND: "file" },
+    );
+    assert.equal(stored.status, 0);
+
+    const result = lab.run(
+      ["--ssh-config", lab.config, "run", "leaf1", "--user", "neteng", "-c", "uptime", "--json"],
+      { NAT_CREDENTIAL_BACKEND: "file", NAT_FAKE_PASSWORD: "hunter2", NAT_SSH_PASSWORD: "" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).results[0].commands[0].output, "up 3 days");
   });
 
   test("--no-multiplex asks ssh for no control socket", () => {

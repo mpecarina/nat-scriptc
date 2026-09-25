@@ -6,6 +6,7 @@
 # command line nat uses: the control master (-M -N), `-O exit`, exec commands
 # (after `--`), and an interactive `-tt` session that echoes what it is sent and
 # answers with a prompt — the behaviour the session state machine reads.
+# `-G` needs no connection, so the real client answers it.
 #
 # Environment:
 #   NAT_FAKE_DIR         directory of canned replies (cmd_<slug> files)
@@ -29,6 +30,16 @@ replies=${NAT_FAKE_DIR-}
 if [ -n "${NAT_FAKE_LOG-}" ]; then
   printf '%s\n' "$*" >>"$NAT_FAKE_LOG"
 fi
+
+case " $* " in
+  *" -G "*)
+    # Without an explicit -F, /dev/null keeps the answer independent of the
+    # developer's own ssh config.
+    case " $* " in
+      *" -F "*) exec ssh "$@" ;;
+      *) exec ssh -F /dev/null "$@" ;;
+    esac ;;
+esac
 
 master=0
 tty_mode=0

@@ -1,5 +1,5 @@
 /**
- * src/models.ts — the shared data carriers.
+ * The shared data carriers.
  *
  * Absent optional values are represented by an empty string (text), `-1`
  * (indices) or `null` (structured values) rather than `undefined`: the JSON
@@ -138,7 +138,7 @@ export class RunRecord {
   status: string;
   /** The run's arguments, kept verbatim for `nat runs`/`nat results` context. */
   args: Json;
-  /** Process that owns a running record, or -1 for a legacy record. */
+  /** Process that owns a running record. */
   ownerPid: number;
 
   constructor(runId: string, commandName: string, createdAt: string, status: string) {
@@ -153,12 +153,10 @@ export class RunRecord {
 
 /** Where nat keeps its state. */
 export class RunPaths {
-  root: string;
   runsDir: string;
   credentialsPath: string;
 
-  constructor(root: string, runsDir: string, credentialsPath: string) {
-    this.root = root;
+  constructor(runsDir: string, credentialsPath: string) {
     this.runsDir = runsDir;
     this.credentialsPath = credentialsPath;
   }

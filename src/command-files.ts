@@ -1,12 +1,10 @@
 /**
- * src/command-files.ts — parse commands and the conditional command syntax.
+ * Command lines and the conditional command syntax.
  *
  * Conditional form: `when <operator>:<value> :: <command>`, where the operator
  * is one of contains | not-contains | equals | not-equals. The condition is
  * evaluated against the cleaned output of the previous command for that host.
  */
-
-import { readFileSync } from "node:fs";
 
 import { CommandSpec, OP_CONTAINS, OP_EQUALS, OP_NOT_CONTAINS, OP_NOT_EQUALS } from "./models.ts";
 import { splitLines } from "./text.ts";
@@ -62,11 +60,6 @@ export function readCommandText(text: string): CommandSpec[] {
     commands.push(parseCommandSpec(line));
   }
   return commands;
-}
-
-/** Read commands from a file on disk. */
-export function readCommandFile(filePath: string): CommandSpec[] {
-  return readCommandText(readFileSync(filePath, "utf8"));
 }
 
 /** Evaluate a spec's condition against the previous command's output. */

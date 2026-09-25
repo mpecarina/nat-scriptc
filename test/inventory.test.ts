@@ -5,14 +5,24 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 
 import {
+  Inventory,
   InventoryError,
-  inventoryFromText,
   isHostPattern,
   loadJsonInventory,
   resolveHost,
   selectHosts,
   suggestAliases,
 } from "../src/inventory.ts";
+import { computeHost, keywordValue, parseSshConfigText } from "../src/sshconfig.ts";
+
+function inventoryFromText(text: string, label: string): Inventory {
+  return new Inventory(parseSshConfigText(text, ""), label);
+}
+
+/** A generated-config setting as ssh will read it. */
+function setting(inv: Inventory, alias: string, key: string): string {
+  return keywordValue(computeHost(inv.config, alias), key, "");
+}
 
 const CONFIG = [
   "Host *",
@@ -39,28 +49,19 @@ function inventory() {
 }
 
 describe("resolveHost", () => {
-  test("resolves every field a host block sets", () => {
+  test("reads the alias and its #nat-driver", () => {
     const host = resolveHost(inventory().config, "leaf1");
-    assert.equal(host.hostname, "10.0.0.1");
-    assert.equal(host.user, "admin");
-    assert.equal(host.port, 2222);
-    assert.deepEqual(host.identityFiles, ["~/.ssh/id_lab"]);
-    assert.equal(host.identitiesOnly, true);
-    assert.equal(host.proxyJump, "bastion");
+    assert.equal(host.alias, "leaf1");
     assert.equal(host.targetOs, "sonic");
   });
 
-  test("IdentityFile none disables keys instead of naming a file", () => {
-    const inv = inventoryFromText("Host leaf1\n  IdentityFile none\n", "test");
-    assert.deepEqual(resolveHost(inv.config, "leaf1").identityFiles, []);
+  test("a bare nat-driver keyword is not a driver", () => {
+    const inv = inventoryFromText("Host leaf1\n  nat-driver sonic\n", "test");
+    assert.equal(resolveHost(inv.config, "leaf1").targetOs, "");
   });
 
-  test("defaults an unlisted host to itself on port 22", () => {
-    const host = resolveHost(inventory().config, "10.9.9.9");
-    assert.equal(host.hostname, "10.9.9.9");
-    assert.equal(host.port, 22);
-    assert.equal(host.user, "");
-    assert.equal(host.targetOs, "");
+  test("an unlisted host has no driver", () => {
+    assert.equal(resolveHost(inventory().config, "10.9.9.9").targetOs, "");
   });
 });
 
@@ -133,27 +134,24 @@ describe("loadJsonInventory", () => {
     );
     const inv = loadJsonInventory(path);
     assert.equal(inv.deviceCount, 2);
-    assert.equal(inv.source, "vmlab");
 
-    const leaf = resolveHost(inv.config, "leaf1");
-    assert.equal(leaf.hostname, "10.0.0.1");
-    assert.equal(leaf.user, "admin");
-    assert.equal(leaf.port, 2222);
-    assert.equal(leaf.targetOs, "sonic");
-    assert.equal(leaf.identitiesOnly, true);
-    assert.ok(inv.syntheticText.includes("PubkeyAuthentication no"));
+    assert.equal(setting(inv, "leaf1", "hostname"), "10.0.0.1");
+    assert.equal(setting(inv, "leaf1", "user"), "admin");
+    assert.equal(setting(inv, "leaf1", "port"), "2222");
+    assert.equal(resolveHost(inv.config, "leaf1").targetOs, "sonic");
+    assert.equal(setting(inv, "leaf1", "identitiesonly"), "yes");
+    assert.equal(setting(inv, "leaf1", "pubkeyauthentication"), "no");
     assert.equal(inv.passwordByHost.get("leaf1"), "s3cret");
 
-    const web = resolveHost(inv.config, "web1");
-    assert.equal(web.hostname, "10.0.1.1");
-    assert.deepEqual(web.identityFiles, ["~/.ssh/id_lab"]);
+    assert.equal(setting(inv, "web1", "hostname"), "10.0.1.1");
+    assert.equal(setting(inv, "web1", "identityfile"), "~/.ssh/id_lab");
   });
 
   test("does not coerce a non-string inventory password", () => {
     const path = writeInventory(JSON.stringify({ devices: [{ id: "leaf1", mgmtIp: "10.0.0.1", password: 1234 }] }));
     const inv = loadJsonInventory(path);
     assert.equal(inv.passwordByHost.has("leaf1"), false);
-    assert.equal(resolveHost(inv.config, "leaf1").identitiesOnly, false);
+    assert.equal(setting(inv, "leaf1", "identitiesonly"), "");
   });
 
   test("rejects duplicate aliases instead of mixing first-host and last-password values", () => {
@@ -164,7 +162,7 @@ describe("loadJsonInventory", () => {
       ],
     }));
     const inventory = loadJsonInventory(path);
-    assert.equal(resolveHost(inventory.config, "leaf1").hostname, "10.0.0.1");
+    assert.equal(setting(inventory, "leaf1", "hostname"), "10.0.0.1");
     assert.equal(inventory.passwordByHost.get("leaf1"), "first");
     assert.equal(inventory.deviceCount, 1);
     assert.equal(inventory.skipped.length, 1);
@@ -175,7 +173,7 @@ describe("loadJsonInventory", () => {
     const path = writeInventory(JSON.stringify({ devices: [{ id: "leaf1", mgmtIp: "10.0.0.1", driver: "sonic" }] }));
     const inv = loadJsonInventory(path);
     assert.ok(inv.syntheticText.includes("#nat-driver sonic"));
-    assert.equal(inv.config.hasBareNatKeywords, false);
+    assert.equal(resolveHost(inv.config, "leaf1").targetOs, "sonic");
   });
 
   test("skips devices with no usable address or alias", () => {
@@ -184,7 +182,7 @@ describe("loadJsonInventory", () => {
         devices: [
           { id: "no-ip" },
           { id: "badip", mgmtIp: "10.0.0.1 ; rm -rf /" },
-          { mgmtIp: "10.0.0.2", name: "has space" },
+          { mgmtIp: "10.0.0.2", id: "has space" },
           { id: "ok", mgmtIp: "10.0.0.3" },
         ],
       }),
@@ -202,12 +200,12 @@ describe("loadJsonInventory", () => {
     );
     const inv = loadJsonInventory(path);
     assert.ok(!inv.syntheticText.includes("ProxyCommand"));
-    assert.equal(resolveHost(inv.config, "leaf1").user, "");
+    assert.equal(setting(inv, "leaf1", "user"), "");
   });
 
   test("rejects a file that is not the inventory schema", () => {
-    const path = writeInventory(JSON.stringify({ hosts: [] }));
-    assert.throws(() => loadJsonInventory(path), InventoryError);
+    assert.throws(() => loadJsonInventory(writeInventory(JSON.stringify({ hosts: [] }))), InventoryError);
+    assert.throws(() => loadJsonInventory(writeInventory(JSON.stringify([]))), InventoryError);
   });
 
   test("reports malformed JSON as an inventory error", () => {

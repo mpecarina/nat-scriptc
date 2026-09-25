@@ -1,11 +1,10 @@
 /**
- * src/sshconfig.ts — an OpenSSH client-config reader.
+ * An OpenSSH client-config reader.
  *
- * nat needs three things from `~/.ssh/config` that the `ssh` binary cannot hand
+ * nat needs two things from `~/.ssh/config` that the `ssh` binary cannot hand
  * back: the list of host aliases (`ssh -G` resolves one host, it cannot
- * enumerate them), the per-host driver keyword, and the resolved values printed
- * by `nat inventory show`. Connections themselves are still made by ssh against
- * the same file, so this reader follows OpenSSH's rules:
+ * enumerate them) and the per-host `#nat-driver` comment. Connections are made
+ * by ssh against the same file, so this reader follows OpenSSH's rules:
  *
  *  - the first obtained value for each keyword wins (a later block cannot
  *    override an earlier one);
@@ -17,13 +16,8 @@
  * A `Match` whose criteria nat cannot evaluate offline (`exec`, `localuser`, …)
  * is skipped rather than guessed at — ssh still applies it when connecting.
  *
- * The driver keyword: OpenSSH rejects a config file containing keywords it does
- * not know, so a bare `Driver sonic` line breaks plain `ssh` for that user. nat
- * therefore reads the driver from a comment — `#nat-driver sonic` (also
- * `#Driver` / `#NatOs`) — which every ssh version ignores. Bare `Driver` /
- * `NatOs` keywords are still read, for configs written for the Bun-era tool;
- * `hasBareNatKeywords` reports them so the transport can add a narrowly scoped
- * `IgnoreUnknown` option while preserving the original file's OpenSSH semantics.
+ * The driver lives in a comment, `#nat-driver sonic`, because OpenSSH rejects
+ * a config file containing a keyword it does not know.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -32,43 +26,20 @@ import { dirname, isAbsolute, join } from "node:path";
 
 import { globToRegExp } from "./text.ts";
 
-/** Keywords nat understands that OpenSSH does not. */
-const NAT_KEYWORDS = ["driver", "natos", "nat-driver", "nat-os"];
-
-/** Keywords whose values accumulate instead of first-wins. */
-const MULTI_KEYWORDS = [
-  "identityfile",
-  "certificatefile",
-  "localforward",
-  "remoteforward",
-  "dynamicforward",
-  "sendenv",
-  "setenv",
-];
+/** The resolved key a `#nat-driver` comment is stored under; no real keyword can collide with it. */
+export const DRIVER_KEY = "#nat-driver";
 
 const BLOCK_HOST = "host";
 const BLOCK_MATCH = "match";
 
 class ConfigEntry {
-  keyword: string;
-  /** Lower-cased keyword, for matching. */
+  /** Lower-cased keyword. */
   key: string;
   value: string;
-  /** True for a value nat read out of a comment rather than a real keyword. */
-  fromComment: boolean;
-  lineNumber: number;
-  file: string;
-  /** Original non-comment config line, with only its inline comment removed. */
-  sourceText: string;
 
-  constructor(keyword: string, value: string, fromComment: boolean, lineNumber: number, file: string, sourceText: string) {
-    this.keyword = keyword;
+  constructor(keyword: string, value: string) {
     this.key = keyword.toLowerCase();
     this.value = value;
-    this.fromComment = fromComment;
-    this.lineNumber = lineNumber;
-    this.file = file;
-    this.sourceText = sourceText;
   }
 }
 
@@ -80,8 +51,6 @@ class ConfigBlock {
   matchHostPatterns: string[];
   /** `Match originalhost` patterns (matched against the CLI alias). */
   matchOriginalPatterns: string[];
-  /** The Match criteria as written, so a flattened config can re-emit them. */
-  matchText: string;
   /** True for `Match all` and for the implicit block before any Host line. */
   matchesEverything: boolean;
   /** True when a Match block carries criteria nat cannot evaluate offline. */
@@ -93,7 +62,6 @@ class ConfigBlock {
     this.patterns = [];
     this.matchHostPatterns = [];
     this.matchOriginalPatterns = [];
-    this.matchText = "";
     this.matchesEverything = false;
     this.unevaluable = false;
     this.entries = [];
@@ -105,16 +73,10 @@ export class SshConfig {
   /** The file this was read from ("" for text parsed in memory). */
   path: string;
   blocks: ConfigBlock[];
-  /** Files actually read, in include order — the first is `path`. */
-  files: string[];
-  /** True when a real (non-comment) Driver/NatOs keyword is present. */
-  hasBareNatKeywords: boolean;
 
   constructor(path: string) {
     this.path = path;
     this.blocks = [];
-    this.files = [];
-    this.hasBareNatKeywords = false;
   }
 }
 
@@ -208,15 +170,10 @@ function splitKeyword(line: string): string[] {
   return [m[1], m[2].trim()];
 }
 
-/**
- * Read a nat keyword out of a comment: `#nat-driver sonic`, `# Driver sonic`.
- * Returns `[keyword, value]`, or an empty array for an ordinary comment.
- */
-function natCommentEntry(line: string): string[] {
-  const m = line.trim().match(/^#+\s*([A-Za-z][A-Za-z0-9_-]*)\s*(?:=|\s)\s*(\S.*)$/);
-  if (m === null) return [];
-  if (!NAT_KEYWORDS.includes(m[1].toLowerCase())) return [];
-  return [m[1], unquote(stripInlineComment(m[2]))];
+/** The value of a `#nat-driver <os>` comment, or "" for any other comment. */
+function driverComment(line: string): string {
+  const m = line.trim().match(/^#nat-driver\s+(\S.*)$/i);
+  return m === null ? "" : unquote(stripInlineComment(m[1]));
 }
 
 /** Expand an `Include` value into concrete, existing file paths. */
@@ -252,7 +209,6 @@ function expandInclude(value: string, baseDir: string): string[] {
 
 /** Which Match criteria nat can decide without a live connection. */
 function classifyMatch(value: string, block: ConfigBlock): void {
-  block.matchText = value.trim();
   const parts = splitTokens(value);
   let index = 0;
   while (index < parts.length) {
@@ -298,14 +254,12 @@ function classifyMatch(value: string, block: ConfigBlock): void {
 function parseInto(
   config: SshConfig,
   text: string,
-  file: string,
   baseDir: string,
   open: ConfigBlock,
   depth: number,
   activeFiles: string[],
 ): ConfigBlock {
   if (depth > 16) return open;
-  config.files.push(file);
   let current = open;
 
   const lines = text.split(/\r\n|\r|\n/);
@@ -315,10 +269,8 @@ function parseInto(
     if (trimmed === "") continue;
 
     if (trimmed.startsWith("#")) {
-      const comment = natCommentEntry(trimmed);
-      if (comment.length === 2) {
-        current.entries.push(new ConfigEntry(comment[0], comment[1], true, i + 1, file, `#${comment[0]} ${comment[1]}`));
-      }
+      const driver = driverComment(trimmed);
+      if (driver !== "") current.entries.push(new ConfigEntry(DRIVER_KEY, driver));
       continue;
     }
 
@@ -345,9 +297,9 @@ function parseInto(
     }
     if (key === "include") {
       for (const included of expandInclude(rawValue, baseDir)) {
-        // The same file may be included at multiple positions and must be
-        // processed each time. Only a file already on this recursion path is a
-        // cycle; the old process-wide de-duplication changed first-wins order.
+        // The same file may be included at several positions and is processed
+        // each time; only a file already on this recursion path is a cycle.
+        // De-duplicating across the whole parse would change first-wins order.
         if (activeFiles.includes(included)) continue;
         let contents = "";
         try {
@@ -356,14 +308,13 @@ function parseInto(
           continue;
         }
         activeFiles.push(included);
-        current = parseInto(config, contents, included, baseDir, current, depth + 1, activeFiles);
+        current = parseInto(config, contents, baseDir, current, depth + 1, activeFiles);
         activeFiles.pop();
       }
       continue;
     }
 
-    if (NAT_KEYWORDS.includes(key)) config.hasBareNatKeywords = true;
-    current.entries.push(new ConfigEntry(keyword, value, false, i + 1, file, line));
+    current.entries.push(new ConfigEntry(keyword, value));
   }
   return current;
 }
@@ -374,7 +325,7 @@ function newConfig(path: string, text: string, baseDir: string, label: string): 
   const preamble = new ConfigBlock(BLOCK_HOST);
   preamble.matchesEverything = true;
   config.blocks.push(preamble);
-  parseInto(config, text, label, baseDir, preamble, 0, [label]);
+  parseInto(config, text, baseDir, preamble, 0, [label]);
   return config;
 }
 
@@ -445,87 +396,24 @@ export function listHostAliases(config: SshConfig): string[] {
   return aliases;
 }
 
-/**
- * Resolve every keyword that applies to `alias`, first-value-wins. Multi-valued
- * keywords (IdentityFile and friends) accumulate in file order.
- */
-export function computeHost(config: SshConfig, alias: string): Map<string, string[]> {
-  const resolved = new Map<string, string[]>();
+/** Every keyword that applies to `alias`, first value wins. */
+export function computeHost(config: SshConfig, alias: string): Map<string, string> {
+  const resolved = new Map<string, string>();
   let hostname = alias;
   for (const block of config.blocks) {
     if (!blockMatches(block, alias, hostname)) continue;
     for (const entry of block.entries) {
-      const existing = resolved.get(entry.key);
-      if (MULTI_KEYWORDS.includes(entry.key)) {
-        if (existing === undefined) resolved.set(entry.key, [entry.value]);
-        else existing.push(entry.value);
-        continue;
-      }
-      if (existing === undefined) {
-        resolved.set(entry.key, [entry.value]);
-        // `Match host` uses the HostName obtained before that Match block,
-        // whereas `Match originalhost` always sees the CLI alias.
-        if (entry.key === "hostname") hostname = entry.value;
-      }
+      if (resolved.has(entry.key)) continue;
+      resolved.set(entry.key, entry.value);
+      // `Match host` uses the HostName obtained before that Match block,
+      // whereas `Match originalhost` always sees the CLI alias.
+      if (entry.key === "hostname") hostname = entry.value;
     }
   }
   return resolved;
 }
 
-/** The single value for `key`, or `fallback`. */
-export function keywordValue(resolved: Map<string, string[]>, key: string, fallback: string): string {
-  const values = resolved.get(key);
-  if (values === undefined || values.length === 0) return fallback;
-  return values[0];
-}
-
-/** Every value recorded for `key` (IdentityFile can appear repeatedly). */
-export function keywordValues(resolved: Map<string, string[]>, key: string): string[] {
-  const values = resolved.get(key);
-  return values === undefined ? [] : values;
-}
-
-/**
- * Every pattern the source already names in `IgnoreUnknown`. When nat must add
- * its legacy driver keywords on the command line, OpenSSH's first-value rule
- * would otherwise hide the user's own list (notably `UseKeychain` in a config
- * shared between macOS and Linux), so the two lists are merged.
- */
-export function configuredIgnoreUnknownPatterns(config: SshConfig): string[] {
-  const patterns: string[] = [];
-  for (const block of config.blocks) {
-    for (const entry of block.entries) {
-      if (entry.key !== "ignoreunknown") continue;
-      for (const token of splitTokens(entry.value)) {
-        for (const pattern of token.split(",")) {
-          const trimmed = pattern.trim();
-          if (trimmed !== "" && !patterns.includes(trimmed)) patterns.push(trimmed);
-        }
-      }
-    }
-  }
-  return patterns;
-}
-
-/**
- * Render the parsed config back out as one flat file that `ssh -F` accepts:
- * every `Include` is already inlined, and nat-only keywords are demoted to
- * `#nat-driver` comments. This remains available for inspecting/exporting the
- * parsed representation; live connections retain the original config instead.
- */
-export function renderFlattenedConfig(config: SshConfig): string {
-  const out: string[] = ["# generated by nat — flattened copy of " + (config.path === "" ? "(memory)" : config.path)];
-  for (const block of config.blocks) {
-    if (block.entries.length === 0) continue;
-    if (block.kind === BLOCK_MATCH) out.push(`Match ${block.matchText}`);
-    else if (block.patterns.length > 0) out.push(`Host ${block.patterns.join(" ")}`);
-    for (const entry of block.entries) {
-      if (NAT_KEYWORDS.includes(entry.key)) {
-        out.push(`    #nat-driver ${entry.value}`);
-        continue;
-      }
-      out.push(`    ${entry.sourceText}`);
-    }
-  }
-  return out.join("\n") + "\n";
+export function keywordValue(resolved: Map<string, string>, key: string, fallback: string): string {
+  const value = resolved.get(key);
+  return value === undefined ? fallback : value;
 }

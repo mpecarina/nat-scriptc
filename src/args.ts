@@ -1,10 +1,6 @@
 /**
- * src/args.ts — the command-line parser.
- *
- * `util.parseArgs` types every value as `string | boolean | (string|boolean)[]`,
- * a union that has to be narrowed at every read. nat's flag set is small and
- * fully known, so it gets a parser that answers in the type each flag actually
- * has, and reports an unknown flag by name instead of throwing a generic error.
+ * The command-line parser. Unlike `util.parseArgs`, each read returns the flag's
+ * own type, and an unknown flag is reported by name.
  *
  * Accepted forms: `--name value`, `--name=value`, `-c value`, `-c=value`, and
  * clustered short booleans (`-qv`). A `--` separator is handled by the caller,
@@ -154,7 +150,6 @@ export function parseArgs(args: string[], specs: OptionSpec[], allowPositionals:
         continue;
       }
       // A cluster of short flags; only the last may take a value.
-      let consumedValue = false;
       for (let c = 0; c < body.length; c += 1) {
         const letter = body.charAt(c);
         const spec = findShort(specs, letter);
@@ -166,16 +161,13 @@ export function parseArgs(args: string[], specs: OptionSpec[], allowPositionals:
         const inline = body.slice(c + 1);
         if (inline !== "") {
           record(parsed, spec, inline);
-          consumedValue = true;
           break;
         }
         if (i + 1 >= args.length) throw new ArgError(`option -${letter} requires a value`);
         i += 1;
         record(parsed, spec, args[i]);
-        consumedValue = true;
         break;
       }
-      if (consumedValue) continue;
       continue;
     }
 
@@ -203,7 +195,6 @@ export function splitAtSeparator(args: string[]): SplitArgs {
   return new SplitArgs(args.slice(0, index), args.slice(index + 1));
 }
 
-/** True when the args ask for help. */
 export function wantsHelp(args: string[]): boolean {
   return args.includes("-h") || args.includes("--help");
 }

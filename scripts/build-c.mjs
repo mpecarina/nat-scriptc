@@ -1,22 +1,19 @@
 #!/usr/bin/env node
 /**
- * scripts/build-c.mjs — rebuild nat from the emitted C, with your own compiler.
+ * Rebuild nat from the emitted C with an ordinary C compiler; scriptc is not
+ * involved.
  *
  *   node scripts/build-c.mjs [--target <triple>] [--cc "<compiler>"]
  *                            [--dir <snapshot>] [-o <path>] [--run]
  *
- * `npm run emit:c` writes a self-contained C project (see build/c/README.md);
- * this compiles it. Nothing here needs scriptc — the snapshot is just C, and
- * that is the point: once the TypeScript has become C, an ordinary compiler
- * takes it the rest of the way.
+ * `npm run emit:c` writes the self-contained C project (see build/c/README.md).
  *
  *   npm run build:c                          # host C, host compiler
  *   npm run build:c -- --cc "zig cc"         # host C, zig's bundled clang
  *   npm run build:c -- --target x86_64-linux-gnu.2.36   # Linux C, via zig
  *
- * The command it runs is printed before it runs, so the next step — running it
- * yourself, changing a flag, opening the .c it names — is always one copy away.
- * `cd build/c && make` does the same thing through the generated Makefile.
+ * The compiler command is printed before it runs. `cd build/c && make` does the
+ * same thing through the generated Makefile.
  */
 
 import { spawnSync } from "node:child_process";
@@ -70,10 +67,9 @@ if (!existsSync(manifestPath)) {
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 if (out === "") out = join(dir, "nat-rebuilt");
 
-// The manifest retains the exact compiler path for provenance but also records
-// a portable command (`cc` or `zig cc`) for rebuilding elsewhere. Older
-// snapshots have only `path`, so keep that as the compatibility fallback.
-const compilerSpec = cc !== "" ? cc : manifest.compiler.command ?? manifest.compiler.path;
+// `compiler.command` is the portable driver (`cc` or `zig cc`); `compiler.path`
+// is the exact host binary, kept for provenance only.
+const compilerSpec = cc !== "" ? cc : manifest.compiler.command;
 const compiler = compilerSpec.trim().split(/\s+/);
 const args = [
   ...manifest.compileFlags,

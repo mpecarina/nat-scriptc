@@ -22,12 +22,7 @@ const FAKE_SSH = join(HERE, "fixtures", "fake-ssh");
  */
 const available = existsSync(BINARY);
 
-/**
- * A generated C binary is useful only while its manifest still describes the
- * current TypeScript inputs. Running a stale build/c/nat here would turn the
- * normal edit-then-test loop into a comparison against an artifact that the C
- * inspection suite has already (correctly) skipped as stale.
- */
+/** build/c/nat joins the differential only while its manifest matches the current sources. */
 function cBinaryIsFresh(): boolean {
   if (!existsSync(C_BINARY)) return false;
   const manifestPath = join(ROOT, "build", "c", "source-manifest.json");

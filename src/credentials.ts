@@ -1,8 +1,6 @@
 /**
- * src/credentials.ts — SSH passwords and key passphrases in the OS keychain.
- *
- * `Bun.secrets` is not available to a natively compiled binary, so nat talks to
- * the same stores through the tools the platforms ship:
+ * SSH passwords and key passphrases in the OS secret store, reached through the
+ * tools each platform ships:
  *
  *   macOS   `security` (login keychain)
  *   Linux   `secret-tool` (libsecret — GNOME Keyring, KWallet, …)
@@ -22,8 +20,6 @@ import { resolveRunPaths } from "./paths.ts";
 export class CredentialError extends Error {}
 
 const SERVICE_PREFIX = "nat";
-/** Schema used by Bun.secrets on Linux; retaining it keeps both tools interoperable. */
-const BUN_LIBSECRET_SCHEMA = "com.oven-sh.bun.Secret";
 
 export const BACKEND_KEYCHAIN = "keychain";
 export const BACKEND_LIBSECRET = "libsecret";
@@ -71,8 +67,6 @@ export function backendDescription(): string {
   return `file (${resolveRunPaths().credentialsPath}, mode 0600)`;
 }
 
-/* --------------------------------- file ---------------------------------- */
-
 function readFileStore(): Json {
   const path = resolveRunPaths().credentialsPath;
   if (!existsSync(path)) return jobj();
@@ -91,8 +85,6 @@ function writeFileStore(store: Json): void {
   chmodSync(pending, 0o600);
   renameSync(pending, path);
 }
-
-/* ------------------------------- operations ------------------------------- */
 
 /** Store a secret. Throws `CredentialError` when it is empty or the store fails. */
 export function setSecret(host: string, user: string, secret: string, kind: string): void {
@@ -116,17 +108,7 @@ export function setSecret(host: string, user: string, secret: string, kind: stri
   if (backend === BACKEND_LIBSECRET) {
     const result = runProcessSync(
       "secret-tool",
-      [
-        "store",
-        "--label",
-        `${service}/${user}`,
-        "service",
-        service,
-        "account",
-        user,
-        "xdg:schema",
-        BUN_LIBSECRET_SCHEMA,
-      ],
+      ["store", "--label", `${service}/${user}`, "service", service, "account", user],
       secret,
       process.env,
     );
@@ -199,8 +181,6 @@ export function deleteSecret(host: string, user: string, kind: string): boolean 
   return true;
 }
 
-/* ---------------------------- environment first --------------------------- */
-
 function normalizeForEnv(value: string): string {
   return value.replace(/[^A-Za-z0-9]/g, "_").toUpperCase();
 }
@@ -216,21 +196,18 @@ function resolveFromEnv(prefix: string, username: string): string {
   return "";
 }
 
-/**
- * The password for a host: an explicit override, then the environment, then the
- * keychain. "" when nothing is configured.
- */
-export function resolvePassword(alias: string, user: string, override: string): string {
+/** An explicit override, then the environment, then the store; "" when none. */
+function resolveSecret(envPrefix: string, kind: string, alias: string, user: string, override: string): string {
   if (override !== "") return override;
-  const fromEnv = resolveFromEnv("NAT_SSH_PASSWORD", user);
+  const fromEnv = resolveFromEnv(envPrefix, user);
   if (fromEnv !== "") return fromEnv;
-  return getSecret(alias, user, "password");
+  return getSecret(alias, user, kind);
 }
 
-/** The key passphrase for a host, resolved the same way. */
+export function resolvePassword(alias: string, user: string, override: string): string {
+  return resolveSecret("NAT_SSH_PASSWORD", "password", alias, user, override);
+}
+
 export function resolvePassphrase(alias: string, user: string, override: string): string {
-  if (override !== "") return override;
-  const fromEnv = resolveFromEnv("NAT_SSH_PASSPHRASE", user);
-  if (fromEnv !== "") return fromEnv;
-  return getSecret(alias, user, "passphrase");
+  return resolveSecret("NAT_SSH_PASSPHRASE", "passphrase", alias, user, override);
 }

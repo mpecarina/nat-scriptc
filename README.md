@@ -3,15 +3,15 @@
 Network Automation Toolkit — a CLI that runs commands across the SSH hosts in
 your `~/.ssh/config` and returns **structured, parsed** output.
 
-This is a port of the Bun/TypeScript `natjs` to [scriptc][scriptc], compiled to a
-real native executable. There is no Node, V8, QuickJS engine or JavaScript
-bytecode anywhere in the binary:
+It is written in TypeScript and compiled with [scriptc][scriptc] to a native
+executable. There is no Node, V8, QuickJS engine or JavaScript bytecode in the
+binary:
 
 ```console
 $ scriptc coverage cli/nat.ts
 
-  statements analyzed   4550
-  compile statically    4550  (100%)
+  statements analyzed   4463
+  compile statically    4463  (100%)
 
   fully static — this program has no dynamic remainder.
 
@@ -30,7 +30,7 @@ dist/nat: Mach-O 64-bit executable arm64
 
 ## Requirements
 
-An OpenSSH client (`ssh`) and standard POSIX userland (`/bin/sh`, `mkfifo` and
+An OpenSSH client (`ssh`, 8.4 or newer) and standard POSIX userland (`/bin/sh`, `mkfifo` and
 `stty`) — preinstalled on macOS and mainstream Linux. There is no language VM
 or bundled JavaScript engine. Development additionally needs Node 24+, and
 clang for the C inspection lane (`npm run emit:c`). The sources run directly
@@ -79,10 +79,9 @@ pinned runtime:
 1. scriptc's readable C backend → `build/c/nat.c` and `build/c/nat`
 2. the pinned LLVM backend → the shipping `dist/nat`
 
-`npm run build` produces the shipping one. `npm run emit:c` produces the C one,
-on demand — it compiles the program a second time, so it is a command you ask
-for rather than a tax on every build. (`scripts/build.mjs` keeps the coupling as
-a commented-out block if you would rather the snapshot were never stale.)
+`npm run build` produces the shipping one. `npm run emit:c` produces the C one
+on demand; it compiles the program a second time, so it is not part of every
+build.
 
 The C lane is not a partial pretty-printer. It is compiled and exercised by the
 same Node-vs-native differential suite as `dist/nat`. It also records all the
@@ -97,7 +96,6 @@ build/c/compiler-invocations.json     compiler probes and compile/link recipe
 build/c/nat.ir.json                   typed IR consumed by the C backend
 build/c/typescript-module-map.json    C module ids mapped back to TypeScript files
 build/c/source-manifest.json          versions + TypeScript/native SHA-256 hashes
-build/c/LICENSE                       nat's license for the standalone source tree
 build/c/nat                           independently executable C-backend binary
 ```
 
@@ -113,9 +111,7 @@ contains recoverable source text.
 
 ### Build the C yourself
 
-The snapshot is a standalone C project. Nothing below runs scriptc — which is
-the point: once the TypeScript has become C, an ordinary compiler takes it the
-rest of the way.
+The snapshot is a standalone C project; nothing below runs scriptc.
 
 ```sh
 npm run build:c                   # host compiler
@@ -138,8 +134,8 @@ run it:     build/c/nat-rebuilt --version
 check it:   NAT_BINARY=build/c/nat-rebuilt node --test test/native.test.ts
 ```
 
-That last line is worth running: your hand-built binary goes through the same
-byte-for-byte differential as the shipping one.
+The last line runs your hand-built binary through the same byte-for-byte
+differential as the shipping one.
 
 The recipe is not hand-written. A tracing wrapper shadows `clang` and `zig` on
 `PATH` during the build and records the real argv, so `compileFlags`,
@@ -272,8 +268,7 @@ exact → glob → `*` wildcard.
 ### The driver keyword lives in a comment
 
 OpenSSH **refuses to read a config file containing a keyword it does not know**,
-so the Bun-era `Driver sonic` line broke plain `ssh` for that host. nat now reads
-the driver from a comment, which every ssh version ignores:
+so the driver is a `#nat-driver` comment, which ssh ignores:
 
 ```
 Host leaf1
@@ -282,17 +277,10 @@ Host leaf1
     #nat-driver sonic
 ```
 
-`#Driver`, `#NatOs` and `#nat-os` are accepted too. A config that still carries a
-bare `Driver`/`NatOs` keyword keeps working: nat adds a narrowly scoped
-`IgnoreUnknown` list for those metadata names and leaves the original config in
-place. Includes, Match blocks, tokens and platform-specific options therefore
-keep OpenSSH's own semantics.
-
 ### Custom parsers
 
-A compiled binary has no JavaScript engine, so the Bun-era `--parsers ./pack.mjs`
-module cannot be loaded. The same extension point is offered two ways, both of
-which a native binary can execute.
+A compiled binary has no JavaScript engine, so custom parsers come in two forms
+it can execute.
 
 **Declarative packs** — `--parsers <pack.json|directory>`, repeatable, later
 sources win. A directory loads its direct `*.json` files in lexical filename
@@ -331,11 +319,6 @@ with `//` is a comment. See
 [`examples/parsers.json`](examples/parsers.json) and the layered
 [`examples/parsers.d/`](examples/parsers.d/) directory.
 
-The JSON format and directory rules are also supported by the Bun version of
-nat, making a parser directory portable between the source and native tools.
-Individual Bun `.mjs` modules remain available there for runtime-specific code;
-portable packs should use JSON (or an external program for arbitrary logic).
-
 **External programs** — `--parser-cmd <program>`, for anything a regex cannot do:
 
 ```sh
@@ -347,11 +330,7 @@ prints one JSON value on stdout, in any language. See
 [`examples/parser-cmd.py`](examples/parser-cmd.py). Throwing is safe either way:
 a failing pack rule or program is recorded as `{ parseError }` on that command,
 and the run still succeeds. External parser programs are capped at 30 seconds,
-so a stuck extension cannot stall the entire host run forever.
-
-*Migrating an `.mjs` pack:* field/row extraction becomes a declarative rule;
-anything with real logic becomes a `--parser-cmd` program (the module's function
-body ports almost verbatim, reading `raw` from the JSON request).
+so a stuck extension cannot stall the entire host run.
 
 ### `--json` envelope
 
@@ -380,11 +359,11 @@ be piped to `jq`. Parsed objects are also attached to events, so `watch` and
 
 So `.results[].commands[] | select(.command == "<cmd>") | .parsed` always reaches
 a parser's structured output. `nat results --json` emits the same envelope and
-adds `createdAt` to results read back from history, matching the Bun tool.
+adds `createdAt` to results read back from history.
 
-Every built-in parser's output is byte-identical to the Bun implementation's;
-[`test/fixtures/parsers/golden.json`](test/fixtures/parsers/golden.json) is that
-implementation's output over 37 fixtures, and the suite asserts against it.
+The built-in parser shapes are a contract:
+[`test/fixtures/parsers/golden.json`](test/fixtures/parsers/golden.json) holds the
+expected output for 37 fixtures, and the suite asserts byte equality against it.
 
 ### Example: structured parser + `jq` in a script
 
@@ -442,8 +421,6 @@ keychain:
 Set `NAT_CREDENTIAL_BACKEND=keychain|libsecret|file` to force one explicitly
 (for example `file` on a headless Linux host with no unlocked desktop keyring).
 Automatic file fallback is announced with a warning when a secret is stored.
-The key names and Linux libsecret schema match the Bun implementation, so the
-native binary can read credentials previously written by `Bun.secrets`.
 
 A resolved secret reaches `ssh` through a generated askpass helper
 (`SSH_ASKPASS` + `SSH_ASKPASS_REQUIRE=force`), so it never appears in an argv the
@@ -480,21 +457,24 @@ authenticates once, and every command rides that socket. With
 `--no-multiplex`, exec-channel commands open separate connections; drivers that
 require an interactive CLI still keep one shell for the host's command sequence.
 
-Host keys are checked. The Bun implementation accepted any key silently; nat
-defaults to `accept-new` (trust on first use, recorded in `known_hosts`) and
-`--host-key-checking no` restores the old posture.
+Host keys are checked: the default is `accept-new` (trust on first use, recorded
+in `known_hosts`), and `--host-key-checking no` turns checking off.
 
-nat also asks `ssh -G` for each host's effective user, hostname, port, identity
-files and jump chain. This keeps credential lookup and `inventory show` aligned
-with `Match exec`, `Match localuser`, canonical/final passes, macOS
-`UseKeychain`, Linux agent settings and OpenSSH's implicit local username. If a
-non-OpenSSH client does not implement `-G`, nat falls back to its local reader.
+Interactive sessions get a real pty from the remote side, but nat's own stdin is
+a FIFO, so ssh requests the default 80×24. Before entering a device CLI nat
+widens it (`stty rows 1000 cols 512` on the Unix-shell drivers, `terminal width
+511` on the Cisco ones) so wide tables do not wrap and break the column parsers.
+
+Each host's user, hostname, port, identity files and jump chain come from
+`ssh -G`, so credential lookup and `inventory show` see exactly what the
+connection will: `Match exec`, `Match localuser`, canonical/final passes,
+platform options and OpenSSH's implicit local username. nat's own config reader
+only lists aliases and reads `#nat-driver`.
 
 ## Data location
 
-Runs are stored under the first existing of `$NAT_HOME` (an explicit override,
-always honoured), `$XDG_CONFIG_HOME/nat`, `~/.config/nat`, then `~/.nat`. Each
-run gets its own directory:
+Runs are stored under `$NAT_HOME` when set, else `$XDG_CONFIG_HOME/nat`, else
+`~/.config/nat`. Each run gets its own directory:
 
 ```
 <root>/runs/<run-id>/run.json      the run header
@@ -503,37 +483,7 @@ run gets its own directory:
 ```
 
 Parallel `nat run` invocations write to different directories, so there is no
-shared writer lock and no "database is locked" — the problem `--no-store`
-existed to work around. `--no-store` is still there; it now simply skips the
-disk.
-
-## What changed from the Bun implementation
-
-| Area | Before | Now | Why |
-| --- | --- | --- | --- |
-| SSH | `ssh2` (pure JS) | the system `ssh` client | a static binary has no hash/cipher/KEX primitives; OpenSSH is the reference implementation and brings ProxyJump, `known_hosts`, agent support and legacy KEX for old gear |
-| Storage | `bun:sqlite` | append-only JSONL per run | no native SQLite to bind, and no writer lock to contend for |
-| Secrets | `Bun.secrets` | `security` / `secret-tool` / 0600 file | the same OS stores, through the tools the platforms ship |
-| Driver keyword | `Driver sonic` | `#nat-driver sonic` | OpenSSH refuses an unknown keyword; the old form still works through a scoped `IgnoreUnknown` option without flattening the config |
-| Custom parsers | modules plus portable JSON files/directories | the same JSON files/directories, plus `--parser-cmd prog` | directory packs are shared; arbitrary code uses an external process because no JS engine is embedded |
-| Host keys | accepted silently | `accept-new`, configurable | ssh's own checking, on by default |
-| Args | `util.parseArgs` | nat's own parser | names an unknown flag instead of throwing a generic error |
-| New | — | `nat doctor`, `--no-multiplex`, `--host-key-checking`, `--ssh-option`, `--verbose` | the transport is now visible, so it is worth exposing |
-
-The CLI surface, the `--parse` shapes and the `--json` envelope are otherwise
-unchanged.
-
-Two behaviours worth knowing:
-
-- **Interactive sessions get a real pty from the remote side, but nat's own stdin
-  is a FIFO**, so ssh requests the default 80×24. Before entering a device CLI
-  nat widens it (`stty rows 1000 cols 512` on the Unix-shell drivers,
-  `terminal width 511` on the Cisco ones) so wide tables do not wrap and break
-  the column parsers.
-- **A regex's unmatched optional group** reads as `undefined` under Node and as
-  `""` in a compiled binary. Every capture in this codebase goes through
-  `group()` / `hasGroup()` in `src/text.ts` so both answer the same; the
-  differential test below is what caught it.
+shared writer lock. `--no-store` skips the disk entirely.
 
 ## Other compiler intermediates
 

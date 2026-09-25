@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * scripts/build-cross.mjs — compile nat for every supported target.
+ * Compile nat for every supported target.
  *
  *   node scripts/build-cross.mjs [target...]
  *

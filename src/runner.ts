@@ -1,5 +1,5 @@
 /**
- * src/runner.ts — orchestrate per-host command execution and fan-out.
+ * Per-host command execution and fan-out.
  *
  * One host, one connection, N commands. Which channel those commands take
  * depends on the driver: SONiC and the Cisco CLIs are driven through an
@@ -18,6 +18,7 @@ import { ProcessResult } from "./process.ts";
 import {
   ConnectionError,
   ConnectionTarget,
+  SSH_ERROR_EXIT,
   ShellChannel,
   SshConnection,
   TransportOptions,
@@ -167,7 +168,7 @@ class PreparedSession {
 /** ssh's own failure text, when a command's exit means the connection died. */
 function connectionFailureText(result: ProcessResult): string {
   if (result.spawnError !== "") return `cannot run ssh (${result.spawnError})`;
-  if (result.code !== 255 || result.stdout !== "") return "";
+  if (result.code !== SSH_ERROR_EXIT || result.stdout !== "") return "";
   if (
     /(Permission denied|Connection refused|Connection closed|Connection timed out|Could not resolve|No route to host|Host key verification|kex_exchange|Bad configuration|Control socket connect)/i.test(
       result.stderr,
@@ -179,25 +180,20 @@ function connectionFailureText(result: ProcessResult): string {
   return "";
 }
 
-/** Explicit port from `[user@]host[:port]`, or -1 when omitted/invalid. */
-function jumpShellPort(spec: string): number {
-  let remainder = spec.trim();
-  const at = remainder.lastIndexOf("@");
-  if (at >= 0) remainder = remainder.slice(at + 1);
-  let raw = "";
-  if (remainder.startsWith("[")) {
-    const close = remainder.indexOf("]");
-    if (close > 0 && remainder.slice(close + 1).startsWith(":")) raw = remainder.slice(close + 2);
-  } else {
-    const colon = remainder.lastIndexOf(":");
-    if (colon >= 0 && remainder.indexOf(":") === colon) raw = remainder.slice(colon + 1);
+/** One `[user@]host[:port]` jump hop. `user` is "" and `port` -1 when not given. */
+class JumpHop {
+  user: string;
+  alias: string;
+  port: number;
+
+  constructor(user: string, alias: string, port: number) {
+    this.user = user;
+    this.alias = alias;
+    this.port = port;
   }
-  const port = Number(raw);
-  return raw !== "" && Number.isFinite(port) && port > 0 && port <= 65535 ? Math.trunc(port) : -1;
 }
 
-/** Resolve `[user@]host[:port]` through the same inventory ssh reads. */
-function jumpShellHost(inventory: Inventory, spec: string): HostConfig {
+function parseJumpHop(spec: string): JumpHop {
   let remainder = spec.trim();
   let user = "";
   const at = remainder.lastIndexOf("@");
@@ -207,12 +203,12 @@ function jumpShellHost(inventory: Inventory, spec: string): HostConfig {
   }
 
   let alias = remainder;
-  let port = -1;
+  let rawPort = "";
   if (remainder.startsWith("[")) {
     const close = remainder.indexOf("]");
     if (close > 0) {
       alias = remainder.slice(1, close);
-      if (remainder.slice(close + 1).startsWith(":")) port = Number(remainder.slice(close + 2));
+      if (remainder.slice(close + 1).startsWith(":")) rawPort = remainder.slice(close + 2);
     }
   } else {
     const colon = remainder.lastIndexOf(":");
@@ -221,21 +217,19 @@ function jumpShellHost(inventory: Inventory, spec: string): HostConfig {
       const parsed = Number(remainder.slice(colon + 1));
       if (Number.isFinite(parsed) && parsed > 0) {
         alias = remainder.slice(0, colon);
-        port = parsed;
+        rawPort = remainder.slice(colon + 1);
       }
     }
   }
 
-  const host = resolveHost(inventory.config, alias);
-  if (user !== "") host.user = user;
-  if (Number.isFinite(port) && port > 0 && port <= 65535) host.port = Math.trunc(port);
-  return host;
+  const port = Number(rawPort);
+  const valid = rawPort !== "" && Number.isFinite(port) && port > 0 && port <= 65535;
+  return new JumpHop(user, alias, valid ? Math.trunc(port) : -1);
 }
 
-/** Explicit user from `[user@]host[:port]`, or "" when ssh_config owns it. */
-function jumpSpecUser(spec: string): string {
-  const at = spec.lastIndexOf("@");
-  return at < 0 ? "" : spec.slice(0, at);
+/** Resolve a jump hop the way ssh will connect to it. */
+function jumpHopHost(inventory: Inventory, transport: TransportOptions, hop: JumpHop, priorHops: string): HostConfig {
+  return resolveEffectiveHost(transport, resolveHost(inventory.config, hop.alias), hop.user, hop.port, priorHops);
 }
 
 /** Last path component, useful because ssh may expand `~` before prompting. */
@@ -245,10 +239,9 @@ function pathTail(path: string): string {
 }
 
 /**
- * Give each ProxyJump child its own stored password/passphrase. The Bun
- * implementation opened every hop itself and therefore resolved credentials
- * per hop; OpenSSH descendants share one askpass helper, so prompt fragments
- * provide the equivalent routing without putting any secret in an argv/file.
+ * Give each ProxyJump hop its own stored password/passphrase. Every ssh
+ * descendant shares one askpass helper, so secrets are routed by the prompt
+ * text that names the hop (`<alias>'s password`) or its key file.
  */
 function addProxyJumpSecrets(
   inventory: Inventory,
@@ -257,10 +250,7 @@ function addProxyJumpSecrets(
   transport: TransportOptions,
 ): void {
   for (const hopSpec of splitJumpSpec(spec)) {
-    const explicitUser = jumpSpecUser(hopSpec);
-    const explicitPort = jumpShellPort(hopSpec);
-    let hop = jumpShellHost(inventory, hopSpec);
-    hop = resolveEffectiveHost(transport, hop, explicitUser, explicitPort, "");
+    const hop = jumpHopHost(inventory, transport, parseJumpHop(hopSpec), "");
 
     const password = resolvePassword(hop.alias, hop.user, "");
     // An empty mapped value is intentional: if the target has a password but a
@@ -270,9 +260,8 @@ function addProxyJumpSecrets(
 
     const passphrase = resolvePassphrase(hop.alias, hop.user, "");
     if (passphrase === "" || hop.identityFiles.length === 0) continue;
-    // The Bun transport could offer one privateKey per connection. Route the
-    // first effective IdentityFile the same way and leave the remaining keys to
-    // OpenSSH's agent/platform keychain handling.
+    // Only the first effective IdentityFile gets the stored passphrase; other
+    // keys are left to ssh-agent or the platform keychain.
     for (const identity of hop.identityFiles.slice(0, 1)) {
       target.addPromptSecret(identity, passphrase);
       const tail = pathTail(identity);
@@ -300,16 +289,12 @@ async function prepareSession(
     if (hops.length === 0) {
       throw new ConnectionError("--jump-shell requires a jump host (ProxyJump or --jump)");
     }
-    const finalSpec = hops[hops.length - 1];
-    let finalHop = jumpShellHost(inventory, finalSpec);
-    const explicitAt = finalSpec.lastIndexOf("@");
-    const explicitUser = explicitAt >= 0 ? finalSpec.slice(0, explicitAt) : "";
-    const explicitPort = jumpShellPort(finalSpec);
+    const last = parseJumpHop(hops[hops.length - 1]);
     const priorHops = hops.length > 1 ? hops.slice(0, hops.length - 1).join(",") : "";
-    finalHop = resolveEffectiveHost(transport, finalHop, explicitUser, explicitPort, priorHops);
+    const finalHop = jumpHopHost(inventory, transport, last, priorHops);
     const target = new ConnectionTarget(finalHop);
-    if (explicitAt >= 0) target.userOverride = finalSpec.slice(0, explicitAt);
-    target.portOverride = explicitPort;
+    target.userOverride = last.user;
+    target.portOverride = last.port;
     // The jump host authenticates on its own account, so it gets its own
     // stored secret rather than the target's.
     target.password = resolvePassword(finalHop.alias, finalHop.user, "");
@@ -416,11 +401,6 @@ export async function runHost(
     store.saveHostResult(runId, failure);
     return failure;
   }
-
-  // A runtime username override wins over the inventory / ssh-config User, so a
-  // different login can be tested without editing the inventory. Applied once,
-  // here, so it flows through every path.
-  if (options.username !== "") host.user = options.username;
 
   const driverName = effectiveDriver(host, options);
   const sonicActive = shouldEnterSonicCli(host, options);
@@ -538,12 +518,8 @@ export function runOptionsJson(options: RunOptions, parserSources: string[]): Js
   node.setNum("commandTimeout", options.commandTimeout);
   node.setBool("parse", options.parse);
   node.setStrOrNull("driver", options.driver === "" ? null : options.driver);
-  if (parserSources.length === 0) {
-    node.setStrOrNull("parsersModules", null);
-  } else {
-    const list = jarr();
-    for (const source of parserSources) list.push(jstr(source));
-    node.set("parsersModules", list);
-  }
+  const list = jarr();
+  for (const source of parserSources) list.push(jstr(source));
+  node.set("parsers", list);
   return node;
 }

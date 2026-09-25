@@ -1,5 +1,5 @@
 /**
- * src/session.ts — drive an interactive CLI over a shell channel.
+ * Drive an interactive CLI over a shell channel.
  *
  * Network operating systems answer differently over an exec channel than over a
  * terminal: SONiC's `sonic-cli` and Cisco's IOS/NX-OS config mode only exist in
@@ -17,9 +17,7 @@
 
 import { ShellChannel, SshConnection } from "./transport.ts";
 import { sleep } from "./process.ts";
-import { lastNonEmptyLine, shellQuote, splitLines } from "./text.ts";
-
-const PROMPT_SUFFIXES = ["#", ">", "$", "%"];
+import { PROMPT_SUFFIXES, lastNonEmptyLine, shellQuote, splitLines } from "./text.ts";
 
 /** A freshly opened session: the channel and the prompt its banner ended with. */
 export class ShellStart {
@@ -228,10 +226,7 @@ export async function prepareIosCli(
   return resolved === null ? current : resolved;
 }
 
-/* ------------------------------------------------------------------ *
- *  Nested SSH through a jump host's interactive shell (--jump-shell)  *
- * ------------------------------------------------------------------ */
-
+/** The `ssh` line typed into a jump host's shell for `--jump-shell`. */
 function buildNestedSshCommand(user: string, hostname: string, port: number): string {
   const parts: string[] = [
     "ssh",

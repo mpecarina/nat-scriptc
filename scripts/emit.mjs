@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * scripts/emit.mjs — write the compiler's intermediate artifacts somewhere you
- * can read them.
+ * Write the compiler's intermediate artifacts where they can be read.
  *
  *   node scripts/emit.mjs [c|llvm|ir|all]... [--out <dir>] [--target <triple>] [--dev]
  *
@@ -14,10 +13,9 @@
  *                          the code generator
  *   build/ir/nat.ir.json   scriptc's own typed IR, before either backend
  *
- * Each kind also links an executable beside its source, because the published
- * CLI emits the artifact as a side effect of a build rather than instead of
- * one. The `c` one is worth keeping: running it is an independent check that
- * the two backends agree.
+ * Each kind also links an executable beside its source, because scriptc emits
+ * an artifact only as a side effect of a build. The `c` executable is an
+ * independent check that the two backends agree.
  *
  * The complete C project is TARGET-SPECIFIC. `nat.c` itself is target-neutral,
  * but the runtime source set and recipe select platform APIs
@@ -295,12 +293,9 @@ function snapshotCBuild(dir, traceDir, realCompiler) {
     writeFileSync(join(dir, "typescript-module-map.json"), JSON.stringify(moduleMap, null, 2) + "\n");
   }
 
-  // The flags the real link ran with, minus everything path-shaped: what is
-  // left is the recipe a reader can re-run by hand, and the Makefile below
-  // bakes in verbatim rather than inventing its own.
-  // The link is the invocation that names the generated program; picking it by
-  // content rather than by position keeps this correct however the trace
-  // records happened to be ordered.
+  // The recipe is the real link's flags minus everything path-shaped; the
+  // Makefile bakes it in verbatim. The link is found by content (the invocation
+  // naming nat.c), not by trace order.
   let linkIndex = invocations.length - 1;
   for (let i = 0; i < invocations.length; i += 1) {
     if (invocations[i].args.some((arg) => resolve(arg) === generated)) linkIndex = i;

@@ -59,9 +59,8 @@ describe("stripCommandEcho", () => {
   });
 
   /**
-   * REGRESSION — a render layer that strips a second time deletes the only line
-   * that said what went wrong: a shell error names the command it could not run,
-   * so the second pass matches it as an "echo".
+   * Stripping a second time deletes the only line that says what went wrong: a
+   * shell error names the command it could not run, so it matches as an echo.
    */
   test("a single pass keeps a shell error that names the command", () => {
     const transcript = [

@@ -19,12 +19,8 @@ interface FixtureCase {
 const manifest: FixtureCase[] = JSON.parse(readFileSync(join(FIXTURES, "manifest.json"), "utf8"));
 const golden: Record<string, unknown> = JSON.parse(readFileSync(join(FIXTURES, "golden.json"), "utf8"));
 
-/**
- * `golden.json` was produced by running the Bun/ssh2 implementation's parsers
- * over these same fixtures. Matching it byte for byte is the port's contract:
- * every consumer of `--parse` keeps reading the shape it already reads.
- */
-describe("parser output matches the reference implementation", () => {
+/** `golden.json` pins the `--parse` shape consumers read; output must match it byte for byte. */
+describe("parser output matches golden.json", () => {
   for (const entry of manifest) {
     test(`${entry.driver} — ${entry.command}`, () => {
       const raw = readFileSync(join(FIXTURES, entry.fixture), "utf8");

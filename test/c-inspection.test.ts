@@ -36,12 +36,9 @@ function sha256(path: string): string {
 }
 
 /**
- * `build/c` is a generated developer artifact, not a checked-in one, so it goes
- * stale the moment a source file is edited. That is a reason to skip, not to
- * fail: making an ordinary edit-then-test loop red would teach the wrong
- * lesson. Release/CI jobs should regenerate it (`npm run emit:c`) before their
- * native differential, so these checks run against a fresh snapshot where it
- * matters.
+ * `build/c` is generated and goes stale on any source edit, so a missing or
+ * stale snapshot skips rather than fails. Release/CI jobs regenerate it with
+ * `npm run emit:c` before the native differential.
  */
 function skipReason(): string | false {
   if (!existsSync(MANIFEST)) return "build/c not generated — run `npm run emit:c`";
@@ -70,7 +67,11 @@ describe("C inspection intermediary", { skip: skipReason() }, () => {
     assert.ok(!manifest.translationUnits.includes("runtime/src/scr_island.c"), "no JavaScript engine is linked");
     assert.ok(!manifest.translationUnits.includes("runtime/vendor/quickjs-ng/quickjs.c"), "only the regex library is linked");
     assert.ok(manifest.compileDependencies.includes("runtime/src/scr_runtime.h"));
-    assert.ok(existsSync(join(C_DIR, "LICENSE")), "the nat license accompanies the standalone project");
+    assert.equal(
+      existsSync(join(C_DIR, "LICENSE")),
+      existsSync(join(ROOT, "LICENSE")),
+      "the project license, when there is one, accompanies the standalone project",
+    );
     assert.ok(existsSync(join(C_DIR, "runtime/vendor/quickjs-ng/LICENSE")), "QuickJS regex notice is retained");
     assert.ok(existsSync(join(C_DIR, "runtime/vendor/ryu/LICENSE-Boost")), "Ryu notice is retained");
 

@@ -1,8 +1,8 @@
 /**
- * src/json.ts — a JSON value tree.
+ * A JSON value tree.
  *
- * A statically compiled binary has no JavaScript engine, so there is no `any`
- * and no reflective `JSON.stringify` over arbitrary objects. Parsed command
+ * A statically compiled binary has no `any` and no reflective
+ * `JSON.stringify` over arbitrary objects. Parsed command
  * output is inherently open-shaped (every driver/command pair returns its own
  * structure), so nat models it explicitly: a `Json` node is a tagged tree that
  * every parser builds and one serializer renders.
@@ -70,11 +70,7 @@ export class Json {
     return this.set(key, jbool(value));
   }
 
-  /**
-   * Set a member only when the value is present. The Bun/JS original spelled
-   * this `...(v ? { k: v } : {})`; an absent optional field must stay absent so
-   * the JSON envelope keeps its documented shape.
-   */
+  /** Set a member only when present; an absent optional field stays absent from the envelope. */
   setOptStr(key: string, value: string | null): Json {
     if (value === null || value === "") return this;
     return this.set(key, jstr(value));
@@ -104,11 +100,6 @@ export class Json {
     return this;
   }
 
-  pushStr(value: string): Json {
-    this.items.push(jstr(value));
-    return this;
-  }
-
   has(key: string): boolean {
     for (const k of this.keys) {
       if (k === key) return true;
@@ -120,15 +111,6 @@ export class Json {
   get(key: string): Json | null {
     for (let i = 0; i < this.keys.length; i += 1) {
       if (this.keys[i] === key) return this.vals[i];
-    }
-    return null;
-  }
-
-  /** The first present member among `names`, or `null`. */
-  getAny(names: string[]): Json | null {
-    for (const name of names) {
-      const found = this.get(name);
-      if (found !== null) return found;
     }
     return null;
   }
@@ -191,13 +173,6 @@ export function jobj(): Json {
   return new Json(JSON_OBJ);
 }
 
-/** An array node holding every string in `values`, in order. */
-export function jstrArray(values: string[]): Json {
-  const a = jarr();
-  for (const v of values) a.items.push(jstr(v));
-  return a;
-}
-
 export function jsonAsString(value: Json, fallback: string): string {
   if (value.kind === JSON_STR) return value.s;
   if (value.kind === JSON_NUM) return renderNumber(value.n);
@@ -215,9 +190,11 @@ export function jsonAsNumber(value: Json, fallback: number): number {
   return fallback;
 }
 
-/* ------------------------------- rendering -------------------------------- */
-
 const HEX = "0123456789abcdef";
+
+function unicodeEscape(code: number): string {
+  return "\\u" + HEX.charAt((code >> 12) & 15) + HEX.charAt((code >> 8) & 15) + HEX.charAt((code >> 4) & 15) + HEX.charAt(code & 15);
+}
 
 function escapeString(value: string): string {
   let out = '"';
@@ -231,23 +208,17 @@ function escapeString(value: string): string {
     else if (code === 9) out += "\\t";
     else if (code === 8) out += "\\b";
     else if (code === 12) out += "\\f";
-    else if (code < 32) {
-      out += "\\u00" + HEX.charAt((code >> 4) & 15) + HEX.charAt(code & 15);
-    } else if (code >= 0xd800 && code <= 0xdbff) {
+    else if (code < 32) out += unicodeEscape(code);
+    else if (code >= 0xd800 && code <= 0xdbff) {
       const next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
       if (next >= 0xdc00 && next <= 0xdfff) {
         out += ch + value.charAt(i + 1);
         i += 1;
       } else {
-        out += "\\u" +
-          HEX.charAt((code >> 12) & 15) + HEX.charAt((code >> 8) & 15) +
-          HEX.charAt((code >> 4) & 15) + HEX.charAt(code & 15);
+        out += unicodeEscape(code);
       }
-    } else if (code >= 0xdc00 && code <= 0xdfff) {
-      out += "\\u" +
-        HEX.charAt((code >> 12) & 15) + HEX.charAt((code >> 8) & 15) +
-        HEX.charAt((code >> 4) & 15) + HEX.charAt(code & 15);
-    } else out += ch;
+    } else if (code >= 0xdc00 && code <= 0xdfff) out += unicodeEscape(code);
+    else out += ch;
   }
   return out + '"';
 }
@@ -255,7 +226,6 @@ function escapeString(value: string): string {
 /** JSON's number grammar has no Infinity or NaN; both render as `null`. */
 function renderNumber(value: number): string {
   if (!Number.isFinite(value)) return "null";
-  if (Number.isInteger(value) && Math.abs(value) < 1e21) return `${value}`;
   return `${value}`;
 }
 
@@ -327,8 +297,6 @@ export function renderJsonPretty(node: Json, indent: number): string {
   return out.join("");
 }
 
-/* -------------------------------- parsing --------------------------------- */
-
 class JsonReader {
   text: string;
   pos: number;
@@ -383,9 +351,8 @@ class JsonReader {
       this.pos += 1;
       if (ch === '"') return out;
       if (ch !== "\\") {
-        // JSON strings may not contain literal control characters. Accepting
-        // them made malformed inventories diverge from JSON.parse and, worse,
-        // let a missing escape quietly change the rest of a parser pack.
+        // JSON forbids literal control characters; accepting them would let a
+        // missing escape silently change the rest of a parser pack.
         if (ch.charCodeAt(0) < 32) {
           this.fail("unescaped control character in string");
           return out;
@@ -425,11 +392,8 @@ class JsonReader {
         return out;
       }
     }
-    // Unreachable in TypeScript, but keeping an explicit return gives the C
-    // backend a total control-flow shape as well. Without it, clang correctly
-    // warns that the generated non-void function can fall off its end because
-    // the backend does not preserve TypeScript's `while (true)` reachability
-    // fact through every nested escape branch.
+    // Unreachable, but the C backend does not carry `while (true)` reachability
+    // through the escape branches, and clang warns without this return.
     return out;
   }
 

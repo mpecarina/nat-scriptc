@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 /**
- * scripts/build.mjs — compile nat for the machine it runs on.
+ * Compile nat for the machine it runs on.
  *
  *   node scripts/build.mjs [-o dist/nat] [--dev]
  *
- * The result is a standalone executable: no Node and no JavaScript engine. Its
- * native dependencies are the platform libc, the `ssh` client nat drives, and
- * the small POSIX helpers listed in the README. It is pinned to the LLVM
- * backend, so a tier regression fails loudly instead of silently shipping the
- * C lane's output.
- *
- * The readable C intermediary is a separate command — `npm run emit:c`.
+ * Pinned to the LLVM backend, so a tier regression fails loudly instead of
+ * silently shipping the C lane's output. `npm run emit:c` builds the readable
+ * C intermediary separately.
  */
 
 import { spawnSync } from "node:child_process";
@@ -38,23 +34,6 @@ for (let i = 0; i < argv.length; i += 1) {
 }
 
 mkdirSync(dirname(out), { recursive: true });
-
-// Coupling the C inspection lane to every build keeps build/c permanently fresh
-// — at the cost of roughly doubling build time, because it compiles the program
-// a second time through the C backend. Left here, disabled, because that is a
-// posture worth flipping rather than rewriting: uncomment to have `npm run
-// build` always refresh the snapshot. While it is off, `npm run emit:c`
-// generates build/c on demand, the inspection test skips when the snapshot is
-// missing or stale; a release/CI job should emit it explicitly.
-//
-// const inspectionArgs = [join(ROOT, "scripts", "emit.mjs"), "c"];
-// if (optimization === "dev") inspectionArgs.push("--dev");
-// const inspection = spawnSync(process.execPath, inspectionArgs, { stdio: "inherit", cwd: ROOT });
-// if (inspection.error) {
-//   console.error(`nat build: could not emit the C inspection build (${inspection.error.message})`);
-//   process.exit(1);
-// }
-// if ((inspection.status ?? 1) !== 0) process.exit(inspection.status ?? 1);
 
 const result = spawnSync(
   SCRIPTC,

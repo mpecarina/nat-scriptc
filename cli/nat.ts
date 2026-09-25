@@ -1,17 +1,3 @@
-/**
- * cli/nat.ts — the command-line entry point.
- *
- *   inventory list                 List host aliases from the ssh config
- *   inventory show <host>          Show resolved connection details
- *   run <host...>                  Run commands across hosts
- *   parse                          Run the parser chain on saved output
- *   watch <run-id>                 Replay/stream a run's events
- *   results <run-id>               Print stored command output for a run
- *   runs [--host <alias>]          List recent runs
- *   cred set|get|delete <host>     Manage a secret in the OS keychain
- *   doctor                         Report the environment nat will use
- */
-
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -31,7 +17,6 @@ import {
 } from "../src/args.ts";
 import { parseCommandSpec, readCommandText } from "../src/command-files.ts";
 import {
-  CredentialError,
   BACKEND_FILE,
   backendDescription,
   credentialBackend,
@@ -41,28 +26,25 @@ import {
   setSecret,
 } from "../src/credentials.ts";
 import { DEFAULT_DRIVER, ParserTable, parseOutput } from "../src/drivers.ts";
-import { Inventory, InventoryError, isHostPattern, loadInventory, loadJsonInventory, resolveHost, selectHosts, suggestAliases } from "../src/inventory.ts";
+import { Inventory, isHostPattern, loadInventory, loadJsonInventory, resolveHost, selectHosts, suggestAliases } from "../src/inventory.ts";
 import { Json, jarr, jobj, renderJson, renderJsonPretty } from "../src/json.ts";
 import { CommandSpec, HostRunResult, ParserContext, SessionEvent } from "../src/models.ts";
-import { ParserPackError, commandParserTable, loadParserPacks } from "../src/parser-packs.ts";
+import { commandParserTable, loadParserPacks } from "../src/parser-packs.ts";
 import { defaultSshConfigPath, resolveRunPaths } from "../src/paths.ts";
 import { commandExists, probeCommand, sleep } from "../src/process.ts";
-import {
-  RunOptions,
-  runMany,
-  runOptionsJson,
-} from "../src/runner.ts";
-import { configuredIgnoreUnknownPatterns, listHostAliases } from "../src/sshconfig.ts";
+import { RunOptions, runMany, runOptionsJson } from "../src/runner.ts";
+import { listHostAliases } from "../src/sshconfig.ts";
 import {
   RunStore,
   STATUS_COMPLETED,
   STATUS_COMPLETED_WITH_ERRORS,
+  eventToJson,
   formatTimestamp,
   hostResultToJson,
   runArgs,
 } from "../src/store.ts";
 import { indentLines } from "../src/text.ts";
-import { ConnectionError, TransportOptions, TransportWorkspace, resolveEffectiveHost } from "../src/transport.ts";
+import { TransportOptions, TransportWorkspace, resolveEffectiveHost } from "../src/transport.ts";
 import {
   HELP_CRED,
   HELP_DOCTOR,
@@ -85,7 +67,6 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "unknown error";
 }
 
-/** Read all of stdin as text. */
 function readStdin(): string {
   try {
     return readFileSync(0, "utf8");
@@ -153,7 +134,6 @@ async function promptSecret(message: string): Promise<string> {
   }
 }
 
-/** Pull a global `--ssh-config` out of the args, wherever it appears. */
 class GlobalArgs {
   sshConfig: string;
   rest: string[];
@@ -164,6 +144,7 @@ class GlobalArgs {
   }
 }
 
+/** `--ssh-config` is global: it may appear anywhere before `--`. */
 function extractSshConfig(args: string[]): GlobalArgs {
   const rest: string[] = [];
   let sshConfig = "";
@@ -187,8 +168,6 @@ function extractSshConfig(args: string[]): GlobalArgs {
   }
   return new GlobalArgs(sshConfig, rest);
 }
-
-/* ------------------------------- inventory ------------------------------- */
 
 function cmdInventory(args: string[], sshConfig: string): number {
   if (wantsHelp(args)) {
@@ -226,7 +205,8 @@ function cmdInventory(args: string[], sshConfig: string): number {
   return fail("inventory expects `list` or `show <host>`");
 }
 
-/* ------------------------------ rendering -------------------------------- */
+// Output is printed verbatim everywhere below: the runner already cleaned it
+// (or kept it raw for --raw), and cleaning twice destroys real output.
 
 function printEvent(event: SessionEvent): void {
   const prefix = `[${formatTimestamp(event.createdAt)}] ${event.hostAlias} ${event.eventType}`;
@@ -234,7 +214,6 @@ function printEvent(event: SessionEvent): void {
     process.stdout.write(`${prefix}: ${event.message}\n`);
     return;
   }
-  // Printed verbatim: the runner already applied cleanup (or skipped it for --raw).
   process.stdout.write(`${prefix}:\n`);
   if (event.message !== "") process.stdout.write(event.message + "\n");
   if (event.parsed !== null) {
@@ -243,15 +222,7 @@ function printEvent(event: SessionEvent): void {
   }
 }
 
-/**
- * Render finished results as text: a `=== host ===` header, then `$ cmd` and
- * its output per command. Shared by `run` and `results` so both read the same.
- *
- * `output` prints verbatim. The runner already applied echo/prompt cleanup
- * where it applies (and honours `--raw` by skipping it), and only the runner
- * knows whether an interactive session was used — re-stripping here would eat
- * any line containing the command text.
- */
+/** The text form shared by `run` and `results`: a host header, then `$ cmd` + output. */
 function renderResults(results: HostRunResult[]): void {
   for (const result of results) {
     const status = result.success ? "ok" : "error";
@@ -278,27 +249,11 @@ function resultsEnvelope(runId: string, results: HostRunResult[]): Json {
   return node;
 }
 
-/* ------------------------------ ssh transport ----------------------------- */
-
 /**
- * Decide which config file ssh should read. A JSON inventory has no file, so it
- * gets a private config inside the workspace. Real configs remain in place:
- * the transport's narrowly scoped IgnoreUnknown option lets OpenSSH skip the
- * legacy nat driver keywords without flattening away Include/Match semantics.
+ * The config file ssh should read: a JSON inventory's generated config (written
+ * into the workspace), an explicit `--ssh-config`, or "" for ssh's own default.
  */
-function prepareSshConfigFile(
-  inventory: Inventory,
-  workspace: TransportWorkspace,
-  explicitPath: string,
-  transport: TransportOptions,
-): string {
-  if (inventory.config.hasBareNatKeywords) {
-    const ignored = ["Driver", "NatOs", "Nat-Driver", "Nat-Os"];
-    for (const pattern of configuredIgnoreUnknownPatterns(inventory.config)) {
-      if (!ignored.includes(pattern)) ignored.push(pattern);
-    }
-    transport.ignoreUnknown = ignored.join(",");
-  }
+function prepareSshConfigFile(inventory: Inventory, workspace: TransportWorkspace, explicitPath: string): string {
   if (inventory.syntheticText !== "") {
     const path = workspace.reserve(".ssh_config");
     writeFileSync(path, inventory.syntheticText);
@@ -312,14 +267,12 @@ function resolveInventoryHostWithSsh(inventory: Inventory, alias: string, explic
   const workspace = new TransportWorkspace();
   try {
     const transport = new TransportOptions();
-    transport.configPath = prepareSshConfigFile(inventory, workspace, explicitPath, transport);
+    transport.configPath = prepareSshConfigFile(inventory, workspace, explicitPath);
     return resolveEffectiveHost(transport, resolveHost(inventory.config, alias), "", -1, "");
   } finally {
     workspace.dispose();
   }
 }
-
-/* ---------------------------------- run ---------------------------------- */
 
 function runOptionSpecs(): OptionSpec[] {
   return [
@@ -427,7 +380,6 @@ async function cmdRun(args: string[], sshConfig: string): Promise<number> {
     return fail("run requires at least one host (or --all)");
   }
 
-  // The host inventory: a JSON lab inventory, or the ssh config.
   let inventory: Inventory;
   const inventoryPath = parsed.str("inventory", "");
   try {
@@ -506,12 +458,11 @@ async function cmdRun(args: string[], sshConfig: string): Promise<number> {
 
   const jsonMode = parsed.bool("json");
   const workers = parsed.int("workers", 5);
-  const noStore = parsed.bool("no-store") || /^(1|true|yes|on)$/i.test(process.env["NAT_NO_STORE"] ?? "");
-  const store = noStore ? RunStore.inMemory() : new RunStore(resolveRunPaths().runsDir);
+  const store = parsed.bool("no-store") ? RunStore.inMemory() : new RunStore(resolveRunPaths().runsDir);
 
   const workspace = new TransportWorkspace();
   const transport = buildTransportOptions(parsed);
-  transport.configPath = prepareSshConfigFile(inventory, workspace, sshConfig, transport);
+  transport.configPath = prepareSshConfigFile(inventory, workspace, sshConfig);
 
   const runId = randomUUID().replace(/-/g, "");
   const commandSources: string[] = [];
@@ -529,7 +480,6 @@ async function cmdRun(args: string[], sshConfig: string): Promise<number> {
     // an already attached `nat watch` process.
     store.setRunStatus(runId, STATUS_COMPLETED_WITH_ERRORS);
     workspace.dispose();
-    store.close();
     process.exit(code);
   };
   const interrupt = (): void => stop(130);
@@ -539,13 +489,8 @@ async function cmdRun(args: string[], sshConfig: string): Promise<number> {
 
   try {
     const pending = runMany(store, runId, inventory, hosts, commands, options, transport, workspace, workers);
-    let results: HostRunResult[];
-    if (parsed.bool("watch") && !jsonMode) {
-      await streamRunEvents(store, runId, pending);
-      results = await pending;
-    } else {
-      results = await pending;
-    }
+    if (parsed.bool("watch") && !jsonMode) await streamRunEvents(store, runId, pending);
+    const results = await pending;
 
     let failures = 0;
     for (const result of results) {
@@ -571,12 +516,9 @@ async function cmdRun(args: string[], sshConfig: string): Promise<number> {
   } finally {
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", terminate);
-    store.close();
     workspace.dispose();
   }
 }
-
-/* --------------------------------- parse --------------------------------- */
 
 function cmdParse(args: string[]): number {
   if (wantsHelp(args)) {
@@ -629,22 +571,6 @@ function cmdParse(args: string[]): number {
   return 0;
 }
 
-/* ------------------------------ watch/results ---------------------------- */
-
-function eventEnvelope(event: SessionEvent): Json {
-  const node = jobj();
-  node.setNum("id", event.id);
-  node.setStr("runId", event.runId);
-  node.setStr("hostAlias", event.hostAlias);
-  node.setStr("eventType", event.eventType);
-  node.setStr("message", event.message);
-  node.setNumOrNull("commandIndex", event.commandIndex < 0 ? null : event.commandIndex);
-  node.setStrOrNull("commandText", event.commandText === "" ? null : event.commandText);
-  if (event.parsed !== null) node.set("parsed", event.parsed);
-  node.setStr("createdAt", event.createdAt);
-  return node;
-}
-
 async function cmdWatch(args: string[]): Promise<number> {
   if (wantsHelp(args)) {
     process.stdout.write(HELP_WATCH + "\n");
@@ -652,7 +578,7 @@ async function cmdWatch(args: string[]): Promise<number> {
   }
   let parsed: ParsedArgs;
   try {
-    parsed = parseArgs(args, [booleanOption("json", ""), booleanOption("raw", "")], true);
+    parsed = parseArgs(args, [booleanOption("json", "")], true);
   } catch (err) {
     return fail(errorMessage(err));
   }
@@ -660,32 +586,27 @@ async function cmdWatch(args: string[]): Promise<number> {
   const runId = parsed.positionals[0];
 
   const store = new RunStore(resolveRunPaths().runsDir);
-  try {
-    store.finalizeRunIfResultsExist(runId);
-    if (store.getRun(runId) === null) return fail(`unknown run-id: ${runId}`);
-    let lastId = 0;
-    while (true) {
-      const rows = store.iterEvents(runId, lastId);
-      if (rows.length > 0) {
-        for (const row of rows) {
-          lastId = row.id;
-          if (parsed.bool("json")) process.stdout.write(renderJson(eventEnvelope(row)) + "\n");
-          else printEvent(row);
-        }
-        continue;
+  store.finalizeRunIfResultsExist(runId);
+  if (store.getRun(runId) === null) return fail(`unknown run-id: ${runId}`);
+  let lastId = 0;
+  while (true) {
+    const rows = store.iterEvents(runId, lastId);
+    if (rows.length > 0) {
+      for (const row of rows) {
+        lastId = row.id;
+        if (parsed.bool("json")) process.stdout.write(renderJson(eventToJson(row, true)) + "\n");
+        else printEvent(row);
       }
-      // The owner can die after this watcher attaches. Recheck the pid-backed
-      // stale-run repair on every idle poll so a crashed run never leaves
-      // `nat watch` hanging forever.
-      store.finalizeRunIfResultsExist(runId);
-      const record = store.getRun(runId);
-      if (record !== null && record.status !== "running") break;
-      await sleep(200);
+      continue;
     }
-    return 0;
-  } finally {
-    store.close();
+    // The owner can die after this watcher attaches; re-running the stale-run
+    // repair on every idle poll keeps a crashed run from hanging `nat watch`.
+    store.finalizeRunIfResultsExist(runId);
+    const record = store.getRun(runId);
+    if (record !== null && record.status !== "running") break;
+    await sleep(200);
   }
+  return 0;
 }
 
 function cmdResults(args: string[]): number {
@@ -695,7 +616,7 @@ function cmdResults(args: string[]): number {
   }
   let parsed: ParsedArgs;
   try {
-    parsed = parseArgs(args, [booleanOption("json", ""), booleanOption("raw", "")], true);
+    parsed = parseArgs(args, [booleanOption("json", "")], true);
   } catch (err) {
     return fail(errorMessage(err));
   }
@@ -703,22 +624,18 @@ function cmdResults(args: string[]): number {
   const runId = parsed.positionals[0];
 
   const store = new RunStore(resolveRunPaths().runsDir);
-  try {
-    if (store.getRun(runId) === null) return fail(`unknown run-id: ${runId}`);
-    const results = store.getResults(runId);
-    if (parsed.bool("json")) {
-      process.stdout.write(renderJsonPretty(resultsEnvelope(runId, results), 2) + "\n");
-      return 0;
-    }
-    if (results.length === 0) {
-      process.stdout.write("(no results recorded yet)\n");
-      return 0;
-    }
-    renderResults(results);
+  if (store.getRun(runId) === null) return fail(`unknown run-id: ${runId}`);
+  const results = store.getResults(runId);
+  if (parsed.bool("json")) {
+    process.stdout.write(renderJsonPretty(resultsEnvelope(runId, results), 2) + "\n");
     return 0;
-  } finally {
-    store.close();
   }
+  if (results.length === 0) {
+    process.stdout.write("(no results recorded yet)\n");
+    return 0;
+  }
+  renderResults(results);
+  return 0;
 }
 
 function cmdRuns(args: string[]): number {
@@ -735,24 +652,16 @@ function cmdRuns(args: string[]): number {
   const limit = parsed.int("limit", 50);
   const host = parsed.str("host", "");
   const store = new RunStore(resolveRunPaths().runsDir);
-  try {
-    const runs = host !== "" ? store.listRunsForHost(host, limit) : store.listRuns(limit);
-    if (runs.length === 0) {
-      process.stdout.write("(no runs recorded)\n");
-      return 0;
-    }
-    for (const run of runs) {
-      process.stdout.write(
-        `${run.runId}  ${formatTimestamp(run.createdAt)}  ${run.status}  ${run.commandName}\n`,
-      );
-    }
+  const runs = host !== "" ? store.listRunsForHost(host, limit) : store.listRuns(limit);
+  if (runs.length === 0) {
+    process.stdout.write("(no runs recorded)\n");
     return 0;
-  } finally {
-    store.close();
   }
+  for (const run of runs) {
+    process.stdout.write(`${run.runId}  ${formatTimestamp(run.createdAt)}  ${run.status}  ${run.commandName}\n`);
+  }
+  return 0;
 }
-
-/* ------------------------------- credentials ----------------------------- */
 
 async function cmdCred(args: string[], sshConfig: string): Promise<number> {
   if (wantsHelp(args)) {
@@ -786,38 +695,30 @@ async function cmdCred(args: string[], sshConfig: string): Promise<number> {
 
   const kind = normalizeKind(parsed.str("kind", "password"));
 
-  try {
-    if (sub === "set") {
-      const provided = parsed.str("secret", "");
-      const secret = provided !== "" ? provided : await promptSecret(`${kind} for ${user}@${alias}: `);
-      setSecret(alias, user, secret, kind);
-      process.stdout.write(`stored ${kind} for ${user}@${alias}\n`);
-      if (credentialBackend() === BACKEND_FILE) {
-        process.stderr.write(`nat: warning: no OS keyring found; secret stored in ${backendDescription()}\n`);
-      }
-      return 0;
+  if (sub === "set") {
+    const provided = parsed.str("secret", "");
+    const secret = provided !== "" ? provided : await promptSecret(`${kind} for ${user}@${alias}: `);
+    setSecret(alias, user, secret, kind);
+    process.stdout.write(`stored ${kind} for ${user}@${alias}\n`);
+    if (credentialBackend() === BACKEND_FILE) {
+      process.stderr.write(`nat: warning: no OS keyring found; secret stored in ${backendDescription()}\n`);
     }
-    if (sub === "delete") {
-      const removed = deleteSecret(alias, user, kind);
-      process.stdout.write(
-        removed ? `deleted ${kind} for ${user}@${alias}\n` : `no ${kind} stored for ${user}@${alias}\n`,
-      );
-      return 0;
-    }
-    if (sub === "get") {
-      const value = getSecret(alias, user, kind);
-      process.stdout.write(value !== "" ? "(secret present)\n" : "(not set)\n");
-      return value !== "" ? 0 : 1;
-    }
-  } catch (err) {
-    if (err instanceof CredentialError) return fail(err.message);
-    throw err;
+    return 0;
   }
-
+  if (sub === "delete") {
+    const removed = deleteSecret(alias, user, kind);
+    process.stdout.write(
+      removed ? `deleted ${kind} for ${user}@${alias}\n` : `no ${kind} stored for ${user}@${alias}\n`,
+    );
+    return 0;
+  }
+  if (sub === "get") {
+    const value = getSecret(alias, user, kind);
+    process.stdout.write(value !== "" ? "(secret present)\n" : "(not set)\n");
+    return value !== "" ? 0 : 1;
+  }
   return fail("cred expects `set`, `get`, or `delete`");
 }
-
-/* --------------------------------- doctor -------------------------------- */
 
 function cmdDoctor(args: string[], sshConfig: string): number {
   if (wantsHelp(args)) {
@@ -831,7 +732,6 @@ function cmdDoctor(args: string[], sshConfig: string): number {
   process.stdout.write(`nat:          ${VERSION}\n`);
   process.stdout.write(`platform:     ${platform()}\n`);
   process.stdout.write(`ssh client:   ${transport.sshBin}${commandExists(transport.sshBin) ? "" : "  (NOT FOUND)"}\n`);
-  // OpenSSH prints its version banner on stderr, so the probe reads both streams.
   const sshVersion = probeCommand(transport.sshBin, ["-V"]);
   process.stdout.write(`ssh version:  ${sshVersion === "" ? "(unknown)" : sshVersion}\n`);
   process.stdout.write(`ssh config:   ${configPath}${existsSync(configPath) ? "" : "  (missing)"}\n`);
@@ -847,8 +747,6 @@ function cmdDoctor(args: string[], sshConfig: string): number {
   process.stdout.write(`host aliases: ${aliases < 0 ? "(config unreadable)" : `${aliases}`}\n`);
   return 0;
 }
-
-/* ---------------------------------- main --------------------------------- */
 
 async function main(argv: string[]): Promise<number> {
   if (argv.length === 0) {
@@ -883,20 +781,14 @@ async function main(argv: string[]): Promise<number> {
     }
     return fail(`unknown command: ${command}`);
   } catch (err) {
-    if (err instanceof InventoryError) return fail(err.message);
-    if (err instanceof CredentialError) return fail(err.message);
-    if (err instanceof ConnectionError) return fail(err.message);
-    if (err instanceof ParserPackError) return fail(err.message);
-    if (err instanceof ArgError) return fail(err.message);
     return fail(errorMessage(err));
   }
 }
 
 main(process.argv.slice(2)).then((code: number) => {
-  // Node's process.exit() can truncate a large write to piped stdout/stderr.
-  // A zero-byte write callback is a stream barrier: it runs after every prior
-  // write on that stream. The native runtime writes synchronously, so the same
-  // code is an immediate no-op there.
+  // Under Node, process.exit() can truncate a large piped write; a zero-byte
+  // write's callback runs after every earlier write on that stream. The native
+  // runtime writes synchronously, so this is a no-op there.
   let pending = 2;
   const flushed = (): void => {
     pending -= 1;

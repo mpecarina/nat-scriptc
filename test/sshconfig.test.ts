@@ -5,14 +5,12 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 
 import {
+  DRIVER_KEY,
   computeHost,
-  configuredIgnoreUnknownPatterns,
   keywordValue,
-  keywordValues,
   listHostAliases,
   parseSshConfigFile,
   parseSshConfigText,
-  renderFlattenedConfig,
 } from "../src/sshconfig.ts";
 
 function scratch(): string {
@@ -51,15 +49,7 @@ describe("ssh config parsing", () => {
     const resolved = computeHost(config, "leaf1");
     assert.equal(keywordValue(resolved, "hostname", ""), "10.0.0.1");
     assert.equal(keywordValue(resolved, "user", ""), "admin user");
-    assert.equal(keywordValue(resolved, "nat-driver", ""), "sonic");
-  });
-
-  test("accumulates repeated IdentityFile values", () => {
-    const config = parseSshConfigText(
-      ["Host leaf1", "  IdentityFile ~/.ssh/a", "  IdentityFile ~/.ssh/b"].join("\n"),
-      "",
-    );
-    assert.deepEqual(keywordValues(computeHost(config, "leaf1"), "identityfile"), ["~/.ssh/a", "~/.ssh/b"]);
+    assert.equal(keywordValue(resolved, DRIVER_KEY, ""), "sonic");
   });
 
   test("host patterns honour globs and negation", () => {
@@ -97,38 +87,12 @@ describe("ssh config parsing", () => {
 
   test("reads the driver from a comment so ssh still accepts the file", () => {
     const config = parseSshConfigText(["Host leaf1", "  HostName 10.0.0.1", "  #nat-driver sonic"].join("\n"), "");
-    assert.equal(keywordValue(computeHost(config, "leaf1"), "nat-driver", ""), "sonic");
-    assert.equal(config.hasBareNatKeywords, false);
+    assert.equal(keywordValue(computeHost(config, "leaf1"), DRIVER_KEY, ""), "sonic");
   });
 
-  test("still reads a bare Driver keyword, and reports it", () => {
-    const config = parseSshConfigText(["Host leaf1", "  Driver sonic"].join("\n"), "");
-    assert.equal(keywordValue(computeHost(config, "leaf1"), "driver", ""), "sonic");
-    assert.equal(config.hasBareNatKeywords, true);
-  });
-
-  test("retains the user's IgnoreUnknown patterns when legacy metadata is added", () => {
-    const config = parseSshConfigText(
-      ["IgnoreUnknown UseKeychain,VendorOption*", "Host leaf1", "  Driver sonic"].join("\n"),
-      "",
-    );
-    assert.deepEqual(configuredIgnoreUnknownPatterns(config), ["UseKeychain", "VendorOption*"]);
-  });
-
-  test("flattening demotes nat keywords to comments ssh ignores", () => {
-    const config = parseSshConfigText(
-      ["Host leaf1", "  HostName 10.0.0.1", '  IdentityFile "~/.ssh/key with space"', "  Driver sonic"].join("\n"),
-      "",
-    );
-    const flattened = renderFlattenedConfig(config);
-    assert.ok(flattened.includes("Host leaf1"));
-    assert.ok(flattened.includes("HostName 10.0.0.1"));
-    assert.ok(flattened.includes('IdentityFile "~/.ssh/key with space"'));
-    assert.ok(flattened.includes("#nat-driver sonic"));
-    assert.ok(!/^\s*Driver /m.test(flattened));
-    // The flattened copy is itself parseable, with the driver preserved.
-    const reread = parseSshConfigText(flattened, "");
-    assert.equal(keywordValue(computeHost(reread, "leaf1"), "nat-driver", ""), "sonic");
+  test("only the #nat-driver spelling is a driver", () => {
+    const config = parseSshConfigText(["Host leaf1", "  #Driver ios", "  # nat-driver eos", "  nat-driver nxos"].join("\n"), "");
+    assert.equal(keywordValue(computeHost(config, "leaf1"), DRIVER_KEY, ""), "");
   });
 
   test("Include is inlined at its position, with globs", () => {
@@ -176,7 +140,7 @@ describe("ssh config parsing", () => {
       ["Host leaf1", `Include ${extra}`, "Host leaf2", `Include ${extra}`].join("\n"),
     );
     const config = parseSshConfigFile(join(dir, "config"));
-    assert.deepEqual(keywordValues(computeHost(config, "leaf1"), "identityfile"), ["~/.ssh/id_shared"]);
-    assert.deepEqual(keywordValues(computeHost(config, "leaf2"), "identityfile"), ["~/.ssh/id_shared"]);
+    assert.equal(keywordValue(computeHost(config, "leaf1"), "identityfile", ""), "~/.ssh/id_shared");
+    assert.equal(keywordValue(computeHost(config, "leaf2"), "identityfile", ""), "~/.ssh/id_shared");
   });
 });

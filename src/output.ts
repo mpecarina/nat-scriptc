@@ -1,16 +1,13 @@
 /**
- * src/output.ts — clean up raw command transcripts.
+ * Clean up raw command transcripts.
  *
  * An interactive shell transcript carries the echoed command and a trailing
- * prompt line. Both are removed here so `results` / `watch` show only what the
- * command produced. Cleanup happens once, in the runner, because only it knows
- * whether an interactive shell was used — a consumer that strips again destroys
- * real output (an error naming the command looks exactly like an echo).
+ * prompt line; both are removed here. Cleanup happens once, in the runner,
+ * because only it knows whether an interactive shell was used — stripping again
+ * destroys real output (an error naming the command looks exactly like an echo).
  */
 
-import { splitLines, trimBlankEdges } from "./text.ts";
-
-const PROMPT_SUFFIXES = ["#", ">", "$", "%"];
+import { PROMPT_SUFFIXES, splitLines, trimBlankEdges } from "./text.ts";
 
 function looksLikePromptLine(line: string): boolean {
   const stripped = line.trim();

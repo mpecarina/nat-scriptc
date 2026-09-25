@@ -1,17 +1,8 @@
 /**
- * src/parser-packs.ts — custom parsers without a JavaScript engine.
- *
- * The Bun-era tool loaded `--parsers ./pack.mjs`, an ES module of parser
- * functions. A statically compiled binary has no engine to run that in, so the
- * same extension point is offered two ways, both of which a compiled nat can
- * execute:
+ * Custom parsers without a JavaScript engine:
  *
  *   --parsers <pack.json>   a declarative pack: regex field and row rules
  *   --parser-cmd <program>  a filter program: JSON in on stdin, JSON out
- *
- * Between them they cover what the module packs were used for — pulling named
- * fields out of a `show` transcript, turning repeating lines into rows, and (in
- * the general case) running arbitrary code in any language.
  *
  * Pack format:
  *
@@ -61,29 +52,8 @@ const TYPE_STRING = "string";
 const TYPE_NUMBER = "number";
 const TYPE_BOOLEAN = "boolean";
 
-/** One named capture in a rule. */
-class FieldSpec {
-  name: string;
-  pattern: RegExp;
-  group: number;
-  type: string;
-  /** When set, the capture splits on this pattern into an array. */
-  split: RegExp | null;
-  /** Optional whole-item filter applied after splitting. */
-  filter: RegExp | null;
-
-  constructor(name: string, pattern: RegExp, group: number, type: string, split: RegExp | null, filter: RegExp | null) {
-    this.name = name;
-    this.pattern = pattern;
-    this.group = group;
-    this.type = type;
-    this.split = split;
-    this.filter = filter;
-  }
-}
-
-/** One column of a row rule; the row's own pattern does the capturing. */
-class ColumnSpec {
+/** How one capture group becomes an output value. */
+class CaptureSpec {
   name: string;
   group: number;
   type: string;
@@ -101,6 +71,17 @@ class ColumnSpec {
   }
 }
 
+/** A named field: its own pattern, plus how to read the capture. */
+class FieldSpec {
+  pattern: RegExp;
+  capture: CaptureSpec;
+
+  constructor(pattern: RegExp, capture: CaptureSpec) {
+    this.pattern = pattern;
+    this.capture = capture;
+  }
+}
+
 /** A compiled rule from a declarative pack. */
 class PackRule {
   kind: string;
@@ -110,7 +91,8 @@ class PackRule {
   fields: FieldSpec[];
   listName: string;
   rowPattern: RegExp | null;
-  columns: ColumnSpec[];
+  /** Row columns; the row's own pattern does the capturing. */
+  columns: CaptureSpec[];
   skip: RegExp[];
   count: boolean;
 
@@ -161,6 +143,23 @@ function splitValue(raw: string, type: string, separator: RegExp, filter: RegExp
   return list;
 }
 
+function compileCapture(node: Json, name: string, defaultGroup: number, where: string): CaptureSpec {
+  const split = node.str("split", "");
+  const filter = node.str("filter", "");
+  return new CaptureSpec(
+    name,
+    Math.trunc(node.num("group", defaultGroup)),
+    readType(node),
+    split === "" ? null : compileRegExp(split, "", `${where}.split`),
+    filter === "" ? null : compileRegExp(filter, "", `${where}.filter`),
+  );
+}
+
+function capturedValue(capture: CaptureSpec, raw: string): Json {
+  if (capture.split === null) return typedValue(raw, capture.type);
+  return splitValue(raw, capture.type, capture.split, capture.filter);
+}
+
 function typedValue(raw: string, type: string): Json {
   if (type === TYPE_NUMBER) {
     const parsed = Number(raw.trim());
@@ -187,22 +186,13 @@ function compileRule(spec: Json, where: string): PackRule {
     for (let i = 0; i < fields.keys.length; i += 1) {
       const name = fields.keys[i];
       const field = fields.vals[i];
-      const pattern = field.kind === "str" ? field.s : field.str("pattern", "");
+      if (field.kind !== "obj") throw new ParserPackError(`${where}: field '${name}' must be an object`);
+      const pattern = field.str("pattern", "");
       if (pattern === "") throw new ParserPackError(`${where}: field '${name}' has no pattern`);
-      const flags = field.kind === "str" ? "" : field.str("flags", "");
-      const groupIndex = field.kind === "str" ? 1 : Math.trunc(field.num("group", 1));
-      const type = field.kind === "str" ? TYPE_STRING : readType(field);
-      const split = field.kind === "str" ? "" : field.str("split", "");
-      const filter = field.kind === "str" ? "" : field.str("filter", "");
+      const flags = field.str("flags", "");
+      const fieldWhere = `${where}.fields.${name}`;
       rule.fields.push(
-        new FieldSpec(
-          name,
-          compileRegExp(pattern, flags, `${where}.fields.${name}`),
-          groupIndex,
-          type,
-          split === "" ? null : compileRegExp(split, "", `${where}.fields.${name}.split`),
-          filter === "" ? null : compileRegExp(filter, "", `${where}.fields.${name}.filter`),
-        ),
+        new FieldSpec(compileRegExp(pattern, flags, fieldWhere), compileCapture(field, name, 1, fieldWhere)),
       );
     }
   }
@@ -216,21 +206,10 @@ function compileRule(spec: Json, where: string): PackRule {
     if (columns !== null && columns.kind === "arr") {
       for (let i = 0; i < columns.items.length; i += 1) {
         const column = columns.items[i];
-        const name = column.kind === "str" ? column.s : column.str("name", "");
+        if (column.kind !== "obj") throw new ParserPackError(`${where}.row.fields[${i}]: must be an object`);
+        const name = column.str("name", "");
         if (name === "") throw new ParserPackError(`${where}.row.fields[${i}]: no name`);
-        const groupIndex = column.kind === "str" ? i + 1 : Math.trunc(column.num("group", i + 1));
-        const type = column.kind === "str" ? TYPE_STRING : readType(column);
-        const split = column.kind === "str" ? "" : column.str("split", "");
-        const filter = column.kind === "str" ? "" : column.str("filter", "");
-        rule.columns.push(
-          new ColumnSpec(
-            name,
-            groupIndex,
-            type,
-            split === "" ? null : compileRegExp(split, "", `${where}.row.fields[${i}].split`),
-            filter === "" ? null : compileRegExp(filter, "", `${where}.row.fields[${i}].filter`),
-          ),
-        );
+        rule.columns.push(compileCapture(column, name, i + 1, `${where}.row.fields[${i}]`));
       }
     }
     if (rule.listName === "") rule.listName = "rows";
@@ -259,13 +238,8 @@ function ruleParser(rule: PackRule): ParserFn {
 
     for (const field of rule.fields) {
       const m = raw.match(field.pattern);
-      if (m === null) continue;
-      if (!hasGroup(m, field.group)) continue;
-      const captured = group(m, field.group);
-      node.set(
-        field.name,
-        field.split === null ? typedValue(captured, field.type) : splitValue(captured, field.type, field.split, field.filter),
-      );
+      if (m === null || !hasGroup(m, field.capture.group)) continue;
+      node.set(field.capture.name, capturedValue(field.capture, group(m, field.capture.group)));
     }
 
     if (rule.rowPattern !== null) {
@@ -293,13 +267,7 @@ function ruleParser(rule: PackRule): ParserFn {
               row.set(column.name, column.split === null ? jnull() : jarr());
               continue;
             }
-            const captured = group(m, column.group);
-            row.set(
-              column.name,
-              column.split === null
-                ? typedValue(captured, column.type)
-                : splitValue(captured, column.type, column.split, column.filter),
-            );
+            row.set(column.name, capturedValue(column, group(m, column.group)));
           }
         }
         rows.push(row);

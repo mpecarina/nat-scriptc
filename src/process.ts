@@ -1,5 +1,5 @@
 /**
- * src/process.ts — child-process helpers.
+ * Child-process helpers.
  *
  * The statically compiled runtime gives `spawn` piped stdout/stderr but no
  * piped stdin, and `execFileSync` the reverse (stdin via `input`, but it blocks

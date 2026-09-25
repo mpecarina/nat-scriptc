@@ -1,5 +1,5 @@
 /**
- * src/inventory.ts — the host inventory.
+ * The host inventory.
  *
  * Two sources produce the same shape: the user's ssh client config, and a JSON
  * lab inventory (the schema vmlab's `/api/labs/:id/inventory.json` emits). The
@@ -14,10 +14,10 @@ import { Json, jsonAsString, parseJson } from "./json.ts";
 import { DEFAULT_PORT, HostConfig } from "./models.ts";
 import { expandUser, defaultSshConfigPath } from "./paths.ts";
 import {
+  DRIVER_KEY,
   SshConfig,
   computeHost,
   keywordValue,
-  keywordValues,
   listHostAliases,
   parseSshConfigFile,
   parseSshConfigText,
@@ -47,7 +47,6 @@ export class Inventory {
   skipped: SkippedDevice[];
   /** Usable devices in a JSON inventory; -1 for an ssh-config inventory. */
   deviceCount: number;
-  source: string;
   /**
    * ssh-config text nat generated itself (JSON inventories). "" when the
    * inventory is a real file the ssh binary can read directly.
@@ -60,7 +59,6 @@ export class Inventory {
     this.passwordByHost = new Map<string, string>();
     this.skipped = [];
     this.deviceCount = -1;
-    this.source = "ssh-config";
     this.syntheticText = "";
   }
 }
@@ -79,39 +77,15 @@ export function loadInventory(configPath: string): Inventory {
   return new Inventory(parseSshConfigFile(resolved), resolved);
 }
 
-/** Build an inventory from ssh-config text held in memory (tests). */
-export function inventoryFromText(text: string, label: string): Inventory {
-  return new Inventory(parseSshConfigText(text, ""), label);
-}
-
 /** True when a host token is a glob pattern rather than a literal name. */
 export function isHostPattern(token: string): boolean {
   return isGlob(token);
 }
 
-/** The resolved connection details for one alias. */
+/** An alias and its `#nat-driver`; `resolveEffectiveHost` (`ssh -G`) supplies the connection fields. */
 export function resolveHost(config: SshConfig, alias: string): HostConfig {
-  const resolved = computeHost(config, alias);
   const host = new HostConfig(alias);
-  host.hostname = keywordValue(resolved, "hostname", alias);
-  host.user = keywordValue(resolved, "user", "");
-  host.port = parseIntPrefix(keywordValue(resolved, "port", ""), DEFAULT_PORT);
-  if (host.port <= 0 || host.port > 65535) host.port = DEFAULT_PORT;
-  for (const file of keywordValues(resolved, "identityfile")) {
-    if (file !== "" && file.toLowerCase() !== "none") host.identityFiles.push(file);
-  }
-  host.identitiesOnly = keywordValue(resolved, "identitiesonly", "").toLowerCase() === "yes";
-  host.proxyJump = keywordValue(resolved, "proxyjump", "");
-  if (host.proxyJump.toLowerCase() === "none") host.proxyJump = "";
-
-  // The driver keyword, in the order the docs list it: #nat-driver wins over
-  // the older #nat-os / NatOs spelling only by appearing first in the file, so
-  // all four names are read the same way.
-  let driver = keywordValue(resolved, "nat-driver", "");
-  if (driver === "") driver = keywordValue(resolved, "driver", "");
-  if (driver === "") driver = keywordValue(resolved, "nat-os", "");
-  if (driver === "") driver = keywordValue(resolved, "natos", "");
-  host.targetOs = driver;
+  host.targetOs = keywordValue(computeHost(config, alias), DRIVER_KEY, "");
   return host;
 }
 
@@ -185,8 +159,6 @@ export function suggestAliases(config: SshConfig, host: string): string[] {
   return hints;
 }
 
-/* --------------------------- JSON inventory source ------------------------ */
-
 const SAFE_TOKEN = /^[A-Za-z0-9._-]+$/;
 const SAFE_HOSTNAME = /^[A-Za-z0-9._:-]+$/;
 const SAFE_PATH = /^[A-Za-z0-9._/~-]+$/;
@@ -202,15 +174,10 @@ function sanitizePath(value: string): string {
   return text !== "" && SAFE_PATH.test(text) ? text : "";
 }
 
-/** The first non-empty string among `keys`, as a raw (unvalidated) value. */
-function firstString(device: Json, keys: string[]): string {
-  for (const key of keys) {
-    const value = device.get(key);
-    if (value === null) continue;
-    const text = jsonAsString(value, "").trim();
-    if (text !== "") return text;
-  }
-  return "";
+/** A member as trimmed text (numbers stringify), or "" when absent. */
+function textMember(device: Json, key: string): string {
+  const value = device.get(key);
+  return value === null ? "" : jsonAsString(value, "").trim();
 }
 
 /** A member only when it is literally a JSON string (passwords are not coerced). */
@@ -243,13 +210,8 @@ export function loadJsonInventory(filePath: string): Inventory {
     throw new InventoryError(`inventory file is not valid JSON: ${detail}`);
   }
 
-  let devices: Json | null = null;
-  if (root.kind === "arr") devices = root;
-  else if (root.kind === "obj") {
-    const listed = root.get("devices");
-    if (listed !== null && listed.kind === "arr") devices = listed;
-  }
-  if (devices === null) {
+  const devices = root.kind === "obj" ? root.get("devices") : null;
+  if (devices === null || devices.kind !== "arr") {
     throw new InventoryError("inventory file must be an object with a `devices` array (vmlab inventory schema)");
   }
 
@@ -260,14 +222,14 @@ export function loadJsonInventory(filePath: string): Inventory {
 
   for (const device of devices.items) {
     if (device.kind !== "obj") continue;
-    const rawId = firstString(device, ["id", "sshAlias", "name"]);
-    const alias = sanitizeToken(firstString(device, ["sshAlias", "id", "name"]));
+    const rawId = textMember(device, "id");
+    const alias = sanitizeToken(rawId);
     if (alias === "") {
-      skipped.push(new SkippedDevice(rawId === "" ? "(unnamed)" : rawId, "missing/invalid alias"));
+      skipped.push(new SkippedDevice(rawId === "" ? "(unnamed)" : rawId, "missing/invalid id"));
       continue;
     }
 
-    let hostname = firstString(device, ["mgmtIp"]);
+    let hostname = textMember(device, "mgmtIp");
     if (hostname === "") {
       const list = device.get("mgmtIps");
       if (list !== null && list.kind === "arr" && list.items.length > 0) {
@@ -293,18 +255,18 @@ export function loadJsonInventory(filePath: string): Inventory {
 
     const lines: string[] = [`Host ${alias}`, `    HostName ${hostname}`];
 
-    const user = sanitizeToken(firstString(device, ["sshUser", "user"]));
+    const user = sanitizeToken(textMember(device, "sshUser"));
     if (user !== "") lines.push(`    User ${user}`);
 
-    let port = parseIntPrefix(firstString(device, ["sshPort", "port"]), DEFAULT_PORT);
+    let port = parseIntPrefix(textMember(device, "sshPort"), DEFAULT_PORT);
     if (port <= 0 || port > 65535) port = DEFAULT_PORT;
     lines.push(`    Port ${port}`);
 
-    const driver = sanitizeToken(firstString(device, ["driver", "targetOs", "os"]));
+    const driver = sanitizeToken(textMember(device, "driver"));
     if (driver !== "") lines.push(`    #nat-driver ${driver}`);
 
     const password = stringMember(device, "password");
-    const identity = sanitizePath(firstString(device, ["sshIdentityFile", "identityFile", "sshKey"]));
+    const identity = sanitizePath(textMember(device, "sshIdentityFile"));
     if (identity !== "") {
       // IdentitiesOnly keeps agent keys from being offered ahead of the
       // device's own key: several network OSes drop the connection after a few
@@ -313,10 +275,9 @@ export function loadJsonInventory(filePath: string): Inventory {
       lines.push(`    IdentitiesOnly yes`);
     } else if (password !== "") {
       lines.push(`    IdentitiesOnly yes`);
-      // OpenSSH still considers its default ~/.ssh/id_* files with only
-      // IdentitiesOnly=yes. The Bun transport offered no keys in this branch,
-      // so disable public-key auth explicitly and reach the inventory password
-      // before devices with a low MaxAuthTries disconnect.
+      // IdentitiesOnly alone still lets OpenSSH try its default ~/.ssh/id_*
+      // keys. Disabling public-key auth reaches the inventory password before a
+      // device with a low MaxAuthTries disconnects.
       lines.push(`    PubkeyAuthentication no`);
     }
 
@@ -329,7 +290,6 @@ export function loadJsonInventory(filePath: string): Inventory {
   inventory.passwordByHost = passwordByHost;
   inventory.skipped = skipped;
   inventory.deviceCount = blocks.length;
-  inventory.source = root.kind === "obj" ? stringMember(root, "source") || "json" : "json";
   inventory.syntheticText = text;
   return inventory;
 }

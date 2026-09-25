@@ -1,5 +1,5 @@
 /**
- * src/parsers-ios.ts — structured parsers for Cisco IOS / IOS-XE `show` output.
+ * Structured parsers for Cisco IOS / IOS-XE `show` output.
  *
  * IOS-XE presents a classic Cisco CLI, so the transport collects a plain
  * transcript and these parsers give it the same self-describing shape as the
@@ -23,7 +23,7 @@
 
 import { Json, jarr, jobj, jstr } from "./json.ts";
 import { ParserContext } from "./models.ts";
-import { deviceLines, kindList, kindObject } from "./parse-util.ts";
+import { deviceLines, grab, kindList, kindObject } from "./parse-util.ts";
 import { group, hasGroup } from "./text.ts";
 
 const IP_SOURCE = "\\d{1,3}(?:\\.\\d{1,3}){3}";
@@ -61,13 +61,6 @@ function isIosCode(code: string): boolean {
   return iosProtocol(code) !== "";
 }
 
-/** The first capture group of `pattern` in `text`, trimmed, or "". */
-function grab(text: string, pattern: RegExp): string {
-  const m = text.match(pattern);
-  if (m === null) return "";
-  return group(m, 1).trim();
-}
-
 /**
  * `show version` → identity fields. IOS-XE prints prose, not key/value rows, so
  * each field is pulled with an anchored pattern:
@@ -86,7 +79,7 @@ export function parseIosVersion(raw: string, ctx: ParserContext): Json {
   const node = kindObject("ios.version");
   node.setOptStr("model", grab(text, /^cisco\s+(\S+)\s+\([^)]*\)\s+processor/im));
   node.setOptStr("version", version);
-  // A twin-friendly alias, so consumers read the same field name as eos.version.
+  // Alias so consumers read the same field name as eos.version.
   node.setOptStr("softwareImageVersion", version);
   node.setOptStr("softwareTrain", grab(text, /Cisco IOS Software \[([^\]]+)\]/i));
   node.setOptStr("softwareImage", grab(text, /\(([A-Z0-9_-]+-M)\),\s*Version/i));

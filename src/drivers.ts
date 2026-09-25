@@ -1,5 +1,5 @@
 /**
- * src/drivers.ts — output parsers scoped by driver / target OS.
+ * Output parsers scoped by driver / target OS.
  *
  * With `--parse`, each command's cleaned output becomes a structured object.
  * The same logical command prints differently across platforms, so parsers are
@@ -128,11 +128,9 @@ export class ParserTable {
 
   /** The scope for `driver`, created on first use. */
   scopeFor(driver: string): DriverScope {
-    const name = driver.toLowerCase();
-    for (const scope of this.scopes) {
-      if (scope.driver === name) return scope;
-    }
-    const scope = new DriverScope(name);
+    const existing = this.find(driver);
+    if (existing !== null) return existing;
+    const scope = new DriverScope(driver.toLowerCase());
     this.scopes.push(scope);
     return scope;
   }
@@ -143,10 +141,6 @@ export class ParserTable {
       if (scope.driver === name) return scope;
     }
     return null;
-  }
-
-  isEmpty(): boolean {
-    return this.scopes.length === 0;
   }
 
   /** Copy `other`'s rules over this table's; later sources win. */
@@ -165,10 +159,8 @@ export class ParserTable {
 }
 
 /**
- * The parsers every Unix-like driver gets. The iproute2 reads are
- * twin-bearing: they are how a Linux host contributes its interfaces and its
- * routes. Those globs only fire when the verb is delivered literally, which is
- * why the `*` fallback sniffs the OUTPUT instead of the command.
+ * The parsers every Unix-like driver gets. The `ip` globs only fire when the
+ * verb is delivered literally, so the `*` fallback sniffs the output instead.
  */
 function commonUnixScope(): DriverScope {
   const scope = new DriverScope("");

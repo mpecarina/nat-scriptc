@@ -1,5 +1,5 @@
 {
-  "//": "Portable declarative parsers shared by the Bun and native nat tools.",
+  "//": "Declarative parsers for --parsers.",
   "//1": "Pass this file or the examples/parsers.d directory to --parsers.",
   "linux": {
     "ip -br addr": {

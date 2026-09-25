@@ -94,7 +94,7 @@ describe("jump specifications", () => {
 });
 
 describe("system ssh_config resolution", () => {
-  test("uses OpenSSH for Match exec, defaults and legacy nat metadata", () => {
+  test("uses OpenSSH for Match exec and its defaults", () => {
     const dir = mkdtempSync(join(tmpdir(), "nat-ssh-g-"));
     const configPath = join(dir, "config");
     writeFileSync(
@@ -102,7 +102,7 @@ describe("system ssh_config resolution", () => {
       [
         "Host audit",
         "    HostName 192.0.2.44",
-        "    Driver sonic",
+        "    #nat-driver sonic",
         "    IdentityFile none",
         'Match originalhost audit exec "test x = x"',
         "    User matched-user",
@@ -114,7 +114,6 @@ describe("system ssh_config resolution", () => {
 
     const options = new TransportOptions();
     options.configPath = configPath;
-    options.ignoreUnknown = "Driver,NatOs,Nat-Driver,Nat-Os";
     const parsed = new HostConfig("audit");
     parsed.hostname = "192.0.2.44";
     parsed.targetOs = "sonic";
@@ -124,19 +123,16 @@ describe("system ssh_config resolution", () => {
     assert.equal(effective.user, "matched-user");
     assert.equal(effective.port, 2207);
     assert.deepEqual(effective.identityFiles, []);
-    assert.equal(effective.targetOs, "sonic", "nat-only metadata survives OpenSSH resolution");
+    assert.equal(effective.targetOs, "sonic", "the driver survives OpenSSH resolution");
 
     const defaultUser = resolveEffectiveHost(options, new HostConfig("default-audit"), "", -1, "");
     assert.equal(defaultUser.user, userInfo().username, "OpenSSH supplies the implicit local login user");
   });
 
-  test("an explicit login user wins even when ssh -G is unavailable", () => {
+  test("an ssh without -G is a connection error, not a guess", () => {
     const options = new TransportOptions();
     options.sshBin = join(tmpdir(), "nat-no-such-ssh-g");
-    const parsed = new HostConfig("audit");
-    parsed.user = "configured-user";
-    const effective = resolveEffectiveHost(options, parsed, "override-user", -1, "");
-    assert.equal(effective.user, "override-user");
+    assert.throws(() => resolveEffectiveHost(options, new HostConfig("audit"), "", -1, ""), ConnectionError);
   });
 });
 

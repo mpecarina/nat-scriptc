@@ -46,9 +46,9 @@ node cli/nat.ts --help       # CLI surface; see examples/
 ## Gotchas
 
 - **Keep the `--parse`/`--json` envelope shape stable**; downstream consumers
-  depend on it as a contract. `test/fixtures/parsers/golden.json` is the Bun
-  implementation's output over 37 fixtures and the suite asserts byte equality
-  against it — change a parser's shape only with that file, deliberately.
+  depend on it as a contract. `test/fixtures/parsers/golden.json` is the
+  expected output over 37 fixtures and the suite asserts byte equality against
+  it — change a parser's shape only with that file, deliberately.
 - **This compiles to a native binary**, so the language surface is narrower than
   Node's: no `any`, no destructuring, no `for…in`, no default exports, no
   callback-form `String.replace`, no `Number.parseInt`. `npm run typecheck`

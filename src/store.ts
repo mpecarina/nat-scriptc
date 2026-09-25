@@ -1,22 +1,14 @@
 /**
- * src/store.ts — run history on the filesystem.
- *
- * The Bun-era tool kept runs in SQLite. A statically compiled binary has no
- * SQLite (and binding one would mean shipping a native library per platform),
- * so nat stores each run in its own directory of append-only JSON lines:
+ * Run history: one directory of append-only JSON lines per run.
  *
  *   <root>/runs/<run-id>/run.json      the run header
  *   <root>/runs/<run-id>/events.jsonl  one event per line, in order
  *   <root>/runs/<run-id>/hosts.jsonl   one host result per line
  *
- * That removes the reason `--no-store` existed in the first place: parallel
- * `nat run` invocations write to different directories, so there is no shared
- * writer lock to contend for and no "database is locked". `--no-store` is kept
- * — it now simply skips the disk entirely.
- *
+ * Parallel runs write to different directories, so there is no shared writer.
  * An event's id is its line number, so a separate `nat watch` process derives
- * the same ids without any coordination, and a partially written trailing line
- * is ignored until its newline lands.
+ * the same ids without coordination, and a partially written trailing line is
+ * ignored until its newline lands.
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
@@ -44,10 +36,13 @@ export function formatTimestamp(iso: string): string {
   return iso.replace(/T/, " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "");
 }
 
-/* ----------------------------- serialization ------------------------------ */
-
-export function eventToJson(event: SessionEvent): Json {
+/** An event's JSON form; `withIdentity` adds `id`/`runId` for `nat watch --json`. */
+export function eventToJson(event: SessionEvent, withIdentity: boolean): Json {
   const node = jobj();
+  if (withIdentity) {
+    node.setNum("id", event.id);
+    node.setStr("runId", event.runId);
+  }
   node.setStr("hostAlias", event.hostAlias);
   node.setStr("eventType", event.eventType);
   node.setStr("message", event.message);
@@ -111,9 +106,7 @@ export function hostResultFromJson(node: Json): HostRunResult {
   return result;
 }
 
-/* --------------------------------- store ---------------------------------- */
-
-/** Everything one run's directory holds, plus the in-memory mirror. */
+/** The in-memory mirror of the run this process owns. */
 class RunState {
   record: RunRecord;
   events: SessionEvent[];
@@ -204,7 +197,7 @@ export class RunStore {
     event.id = id;
     if (state !== null) state.events.push(event);
     if (this.runsDir !== "") {
-      appendFileSync(join(this.dirFor(event.runId), "events.jsonl"), renderJson(eventToJson(event)) + "\n");
+      appendFileSync(join(this.dirFor(event.runId), "events.jsonl"), renderJson(eventToJson(event, false)) + "\n");
     }
     return id;
   }
@@ -302,7 +295,7 @@ export class RunStore {
     return out;
   }
 
-  /** Run ids on disk, newest first by header timestamp. */
+  /** Run headers on disk, newest first. */
   private allRecords(): RunRecord[] {
     if (this.runsDir === "" || !existsSync(this.runsDir)) return [];
     const records: RunRecord[] = [];
@@ -363,28 +356,18 @@ export class RunStore {
       return;
     }
 
-    // `nat watch <id>` may attach while the run is live. Never infer completion
-    // from one partial host result while the owning process still exists.
+    // `nat watch <id>` may attach while the run is live: a partial run is only
+    // terminal once its owning process is gone. (pid <= 0 would address a
+    // process group, not the owner.)
     if (record.ownerPid > 0) {
       try {
         process.kill(record.ownerPid, 0);
         return;
       } catch (err) {
-        // ESRCH: the owner died. The partial (even empty) run is now terminal.
+        // ESRCH: the owner died, so the partial (even empty) run is terminal.
       }
-      this.setRunStatus(runId, STATUS_COMPLETED_WITH_ERRORS);
-      return;
     }
-
-    // Legacy headers did not record an owner pid; preserve their old recovery
-    // rule, but derive the error status from the results that did land.
-    if (results.length > 0) {
-      this.setRunStatus(runId, hasFailure ? STATUS_COMPLETED_WITH_ERRORS : STATUS_COMPLETED);
-    }
-  }
-
-  close(): void {
-    // Nothing to release: every write is a completed append.
+    this.setRunStatus(runId, STATUS_COMPLETED_WITH_ERRORS);
   }
 }
 

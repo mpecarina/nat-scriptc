@@ -1,10 +1,8 @@
 /**
- * src/parsers-sonic.ts — structured parsers for SONiC `show` commands.
+ * Structured parsers for SONiC `show` commands.
  *
- * nat is the single source of truth for turning a SONiC transcript into a
- * structured object; downstream consumers read `--parse` output instead of
- * re-parsing text. Each parser returns a neutral, self-describing shape so the
- * JSON documents itself:
+ * Downstream consumers read `--parse` output instead of re-parsing text, so
+ * each parser returns a neutral, self-describing shape:
  *
  *   show version          -> { kind: "sonic.version",          fields: {…} }
  *   show interface status -> { kind: "sonic.interfaceStatus",  interfaces: […] }
@@ -278,8 +276,6 @@ export function parseSonicArp(raw: string, ctx: ParserContext): Json {
   }
   return kindList("sonic.arp", "neighbors", neighbors);
 }
-
-/* ------------------- EVPN / VXLAN fabric verification --------------------- */
 
 /** The address family implied by a `show bgp <afi> <safi> summary` command. */
 function bgpAddressFamily(command: string): string {

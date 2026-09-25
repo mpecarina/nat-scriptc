@@ -1,14 +1,11 @@
 /**
- * src/transport.ts — the SSH transport, driven by the system `ssh` binary.
+ * The SSH transport, driven by the system `ssh` binary.
  *
- * The Bun-era tool embedded a pure-JavaScript SSH stack. A statically compiled
- * binary has no JavaScript engine and no hash/cipher/KEX primitives in
- * `node:crypto`, so nat instead drives OpenSSH — which every macOS and Linux
- * host already ships, is the reference implementation, and brings the legacy
- * KEX/cipher negotiation old network gear needs, plus ProxyJump, known_hosts,
- * agent support and the user's own ssh_config for free.
+ * The compiled runtime has no hash/cipher/KEX primitives, so nat drives
+ * OpenSSH, which also brings the legacy KEX/ciphers old network gear needs,
+ * ProxyJump, known_hosts, agent support and the user's own ssh_config.
  *
- * One host gets one connection for the whole run, exactly as before:
+ * One host gets one connection for the whole run:
  *
  *   - a master process (`ssh -M -N`) authenticates once and holds the socket;
  *   - `exec()` runs each command over that socket (`ssh -o ControlPath=…`);
@@ -19,8 +16,8 @@
  *
  * Piped stdin is not part of the compiled `spawn` surface, so the interactive
  * shell feeds the ssh child through a FIFO that a `/bin/sh` wrapper redirects
- * into it. Writes are incremental, which is what makes live prompt detection —
- * and therefore conditionals and CLI sub-modes — work exactly as they did.
+ * into it. Writes are incremental, which is what live prompt detection (and so
+ * conditionals and CLI sub-modes) depends on.
  *
  * Passwords never appear in an argv or on disk: a generated askpass helper in a
  * 0700 temp directory prints whichever secret its prompt asks for, and the
@@ -33,13 +30,13 @@ import { chmodSync, closeSync, existsSync, mkdtempSync, openSync, rmSync, writeF
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DEFAULT_PORT, HostConfig } from "./models.ts";
+import { HostConfig } from "./models.ts";
 import { ChildProcessRegistry, ProcessResult, childEnv, runProcess, runProcessSync, sleep } from "./process.ts";
 
 export class ConnectionError extends Error {}
 
 /** ssh's own failure code — anything else is the remote command's status. */
-const SSH_ERROR_EXIT = 255;
+export const SSH_ERROR_EXIT = 255;
 const MAX_PROMPT_SECRETS = 16;
 
 const ASKPASS_SCRIPT = `#!/bin/sh
@@ -89,9 +86,6 @@ export class TransportOptions {
   multiplex: boolean;
   /** Extra `-o Key=Value` settings from `--ssh-option`. */
   extraOptions: string[];
-  /** Comma-separated config keywords OpenSSH should ignore, or "". */
-  ignoreUnknown: string;
-  /** Print each ssh invocation to stderr. */
   verbose: boolean;
 
   constructor() {
@@ -102,7 +96,6 @@ export class TransportOptions {
     this.hostKeyChecking = "accept-new";
     this.multiplex = true;
     this.extraOptions = [];
-    this.ignoreUnknown = "";
     this.verbose = false;
   }
 }
@@ -233,19 +226,6 @@ export class ConnectionTarget {
   }
 }
 
-/** Copy a host without sharing its mutable IdentityFile list. */
-function copyHost(host: HostConfig): HostConfig {
-  const copy = new HostConfig(host.alias);
-  copy.hostname = host.hostname;
-  copy.user = host.user;
-  copy.port = host.port;
-  copy.identityFiles = host.identityFiles.slice();
-  copy.identitiesOnly = host.identitiesOnly;
-  copy.proxyJump = host.proxyJump;
-  copy.targetOs = host.targetOs;
-  return copy;
-}
-
 /** Split one `ssh -G` output line into its lower-case keyword and value. */
 function effectiveConfigLine(line: string): string[] {
   const trimmed = line.trim();
@@ -260,19 +240,11 @@ function effectiveConfigLine(line: string): string[] {
 }
 
 /**
- * Resolve the effective connection fields with the system OpenSSH parser.
- *
- * The local reader remains useful for alias enumeration and nat's driver
- * comment, but it cannot faithfully evaluate `Match exec`, `Match localuser`,
- * canonical/final passes, every Include form, or platform additions. `ssh -G`
- * can, and it also supplies OpenSSH's default local username when no `User` is
- * written. That username is important because stored credentials are keyed by
- * alias + effective login user.
- *
- * A non-OpenSSH client, an old client without `-G`, or a test stub may return
- * no usable configuration. In that case the locally parsed host is retained;
- * explicit nat overrides are still applied so credential selection remains
- * correct.
+ * Resolve the connection fields with `ssh -G`, which evaluates the config
+ * exactly as the connection will: `Match exec`, `Match localuser`,
+ * canonical/final passes, every Include form, and the implicit local username.
+ * Stored credentials are keyed by alias + this effective user. Only the driver
+ * comes from nat's own reader.
  */
 export function resolveEffectiveHost(
   options: TransportOptions,
@@ -281,13 +253,7 @@ export function resolveEffectiveHost(
   portOverride: number,
   jumpOverride: string,
 ): HostConfig {
-  const fallback = copyHost(host);
-  if (userOverride !== "") fallback.user = userOverride;
-  if (portOverride > 0 && portOverride <= 65535) fallback.port = portOverride;
-  if (jumpOverride !== "") fallback.proxyJump = jumpOverride;
-
   const args: string[] = ["-G"];
-  if (options.ignoreUnknown !== "") args.push("-o", `IgnoreUnknown=${options.ignoreUnknown}`);
   if (options.configPath !== "") args.push("-F", options.configPath);
   if (portOverride > 0 && portOverride <= 65535) args.push("-p", `${portOverride}`);
   if (jumpOverride !== "") args.push("-J", jumpOverride);
@@ -296,10 +262,10 @@ export function resolveEffectiveHost(
   args.push(userOverride === "" ? alias : `${userOverride}@${alias}`);
 
   const result = runProcessSync(options.sshBin, args, "", process.env, 10_000);
-  if (!result.ok()) return fallback;
+  if (!result.ok()) throw new ConnectionError(`ssh -G ${alias} failed: ${result.output.trim()}`);
 
-  const effective = copyHost(fallback);
-  effective.identityFiles = [];
+  const effective = new HostConfig(host.alias);
+  effective.targetOs = host.targetOs;
   let sawHostname = false;
   let sawUser = false;
   let sawPort = false;
@@ -329,10 +295,9 @@ export function resolveEffectiveHost(
     }
   }
 
-  // A test double may accept `-G` but print unrelated command output. OpenSSH
-  // always supplies all three core fields, so require that signature.
-  if (!sawHostname || !sawUser || !sawPort) return fallback;
-  if (effective.port <= 0 || effective.port > 65535) effective.port = DEFAULT_PORT;
+  if (!sawHostname || !sawUser || !sawPort) {
+    throw new ConnectionError(`ssh -G ${alias} did not report a hostname, user and port (is ${options.sshBin} OpenSSH?)`);
+  }
   return effective;
 }
 
@@ -358,7 +323,7 @@ function offeredMethods(target: ConnectionTarget): string[] {
 
 /**
  * Turn an ssh failure into the message nat reports. Authentication failures name
- * what was tried and how to add a method, the way the Bun-era tool did.
+ * what was tried and how to add a method.
  */
 export function connectErrorMessage(target: ConnectionTarget, result: ProcessResult): string {
   const label = target.host.alias !== "" ? target.host.alias : target.host.hostname;
@@ -448,7 +413,6 @@ export class ShellChannel {
     return data;
   }
 
-  /** Send one line to the session. */
   sendLine(command: string, newline: string): void {
     if (this.closed) return;
     try {
@@ -530,11 +494,7 @@ export class SshConnection {
     const extra = new Map<string, string>();
     if (this.target.hasSecret()) {
       extra.set("SSH_ASKPASS", this.workspace.askpassPath);
-      // 8.4+ honours `force` with no terminal at all; older versions need a
-      // DISPLAY set and no controlling tty, which a spawned child already has.
       extra.set("SSH_ASKPASS_REQUIRE", "force");
-      const display = process.env["DISPLAY"];
-      if (display === undefined || display === "") extra.set("DISPLAY", "nat:0");
       extra.set("NAT_ASKPASS_PASSWORD", this.target.password);
       extra.set("NAT_ASKPASS_PASSPHRASE", this.target.passphrase);
       for (let i = 0; i < this.target.promptMarkers.length && i < MAX_PROMPT_SECRETS; i += 1) {
@@ -549,12 +509,7 @@ export class SshConnection {
   /** The `-o` settings and flags every ssh invocation for this host carries. */
   private baseArgs(): string[] {
     const args: string[] = [];
-    if (this.options.configPath !== "") {
-      args.push("-F", this.options.configPath);
-    }
-    if (this.options.ignoreUnknown !== "") {
-      args.push("-o", `IgnoreUnknown=${this.options.ignoreUnknown}`);
-    }
+    if (this.options.configPath !== "") args.push("-F", this.options.configPath);
     args.push("-o", `ConnectTimeout=${Math.max(1, this.options.connectTimeout)}`);
     args.push("-o", "ServerAliveInterval=15");
     args.push("-o", "ServerAliveCountMax=3");
@@ -647,10 +602,7 @@ export class SshConnection {
     // honest, and the master's own exit ends the wait immediately.
     const deadline = Date.now() + (Math.max(1, this.options.connectTimeout) + 10) * 1000;
     while (Date.now() < deadline) {
-      if (existsSync(this.controlPath)) {
-        this.master = child;
-        return;
-      }
+      if (existsSync(this.controlPath)) return;
       if (this.masterExited) break;
       await sleep(50);
     }
@@ -675,10 +627,7 @@ export class SshConnection {
     throw new ConnectionError(connectErrorMessage(this.target, failure));
   }
 
-  /**
-   * Run one command over the connection. stdout and stderr are interleaved into
-   * a single transcript, matching what an exec channel delivered before.
-   */
+  /** Run one command over the connection; stdout and stderr interleave into one transcript. */
   async exec(command: string, timeoutSeconds: number): Promise<ProcessResult> {
     const args = this.baseArgs();
     // A direct flag wins over both ssh_config and `--ssh-option RequestTTY=…`,

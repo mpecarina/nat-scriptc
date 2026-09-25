@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
@@ -430,11 +430,11 @@ describe("credentials", () => {
     assert.notEqual(result.code, 0);
   });
 
-  test("requires a user it cannot infer", () => {
+  test("defaults the account to ssh's effective login user", () => {
     const lab = new Lab();
-    const result = lab.run(["cred", "set", "web2"]);
-    assert.notEqual(result.code, 0);
-    assert.ok(result.stderr.includes("could not determine user"));
+    const result = lab.run(["--ssh-config", lab.config, "cred", "set", "web2", "--secret", "hunter2"]);
+    assert.equal(result.code, 0, result.stderr);
+    assert.ok(result.stdout.includes(`stored password for ${userInfo().username}@web2`));
   });
 
   test("infers a stored-password account through OpenSSH Match rules", () => {
@@ -463,7 +463,7 @@ describe("credentials", () => {
     assert.ok(result.stdout.includes("stored password for match-user@matched"));
   });
 
-  test("Linux writes Bun.secrets-compatible libsecret attributes", () => {
+  test("Linux stores secrets under nat's service and account attributes", () => {
     const base = mkdtempSync(join(tmpdir(), "nat-secret-tool-"));
     const tool = join(base, "secret-tool");
     const argsLog = join(base, "args");
@@ -491,7 +491,6 @@ describe("credentials", () => {
     assert.equal(result.status, 0, result.stderr);
     const args = readFileSync(argsLog, "utf8");
     assert.ok(args.includes("service nat:leaf1:password account admin"));
-    assert.ok(args.includes("xdg:schema com.oven-sh.bun.Secret"));
     assert.equal(readFileSync(inputLog, "utf8"), "hunter2");
   });
 });

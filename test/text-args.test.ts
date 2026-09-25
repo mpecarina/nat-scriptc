@@ -11,7 +11,6 @@ import {
   wantsHelp,
 } from "../src/args.ts";
 import {
-  escapeRegExp,
   globToRegExp,
   indentLines,
   lastNonEmptyLine,
@@ -20,7 +19,6 @@ import {
   shellQuote,
   splitLines,
   trimBlankEdges,
-  truthy,
 } from "../src/text.ts";
 
 describe("text helpers", () => {
@@ -34,11 +32,6 @@ describe("text helpers", () => {
     assert.equal(globToRegExp("a?c").test("abc"), true);
     assert.equal(globToRegExp("a.c").test("abc"), false);
     assert.equal(globToRegExp("a.c").test("a.c"), true);
-  });
-
-  test("escapeRegExp neutralises every metacharacter", () => {
-    assert.equal(new RegExp(`^${escapeRegExp("a.b*c(d)")}$`).test("a.b*c(d)"), true);
-    assert.equal(new RegExp(`^${escapeRegExp("a.b*c(d)")}$`).test("axbyc(d)"), false);
   });
 
   test("parseIntPrefix follows parseInt, not Number", () => {
@@ -67,11 +60,6 @@ describe("text helpers", () => {
   test("lastNonEmptyLine finds the prompt at the end of a transcript", () => {
     assert.equal(lastNonEmptyLine("out\nleaf1# \n\n"), "leaf1#");
     assert.equal(lastNonEmptyLine("  \n"), null);
-  });
-
-  test("truthy accepts the usual affirmative spellings", () => {
-    for (const value of ["1", "true", "YES", " on "]) assert.equal(truthy(value), true);
-    for (const value of ["0", "false", "", "maybe"]) assert.equal(truthy(value), false);
   });
 });
 

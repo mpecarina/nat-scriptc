@@ -1,24 +1,11 @@
-/**
- * src/text.ts — small text helpers shared across the toolkit.
- *
- * These exist because the statically compiled surface is narrower than Node's:
- * `Number.parseInt` and callback-form `String.replace` are not available, so the
- * few places that need them get explicit, predictable implementations here.
- */
+/** Small text helpers shared across the toolkit. */
+
+/** Last characters that make a line look like a device or shell prompt. */
+export const PROMPT_SUFFIXES = ["#", ">", "$", "%"];
 
 /** Split on any line ending (CRLF, CR, LF) — device transcripts mix all three. */
 export function splitLines(text: string): string[] {
   return text.split(/\r\n|\r|\n/);
-}
-
-/** Content lines: trailing whitespace stripped, blank lines dropped. */
-export function contentLines(raw: string): string[] {
-  const out: string[] = [];
-  for (const line of splitLines(raw)) {
-    const trimmed = line.trimEnd();
-    if (trimmed.trim() !== "") out.push(trimmed);
-  }
-  return out;
 }
 
 /** Collapse runs of internal whitespace so command keys match regardless of spacing. */
@@ -34,17 +21,6 @@ export function tokens(line: string): string[] {
 }
 
 const REGEXP_SPECIALS = ".*+?^${}()|[]\\/";
-
-/** Escape every regex metacharacter in `value` so it matches literally. */
-export function escapeRegExp(value: string): string {
-  let out = "";
-  for (let i = 0; i < value.length; i += 1) {
-    const ch = value.charAt(i);
-    if (REGEXP_SPECIALS.includes(ch)) out += "\\";
-    out += ch;
-  }
-  return out;
-}
 
 /**
  * Compile a shell-style glob into an anchored RegExp. `*` matches any run and
@@ -93,20 +69,6 @@ export function parseIntPrefix(value: string, fallback: number): number {
   if (digits === "") return fallback;
   const parsed = Number(digits);
   return Number.isFinite(parsed) ? sign * parsed : fallback;
-}
-
-/** A finite number from `value`, or `fallback`. */
-export function parseNumber(value: string, fallback: number): number {
-  const text = value.trim();
-  if (text === "") return fallback;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-/** True for the usual affirmative spellings of a boolean environment value. */
-export function truthy(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 /** Wrap `value` in single quotes for /bin/sh, escaping embedded quotes. */
@@ -161,12 +123,4 @@ export function group(match: RegExpMatchArray, index: number): string {
 /** True when the capture group participated and captured something. */
 export function hasGroup(match: RegExpMatchArray, index: number): boolean {
   return group(match, index) !== "";
-}
-
-/** The first capture group of `pattern` in `text`, trimmed, or `null`. */
-export function capture(text: string, pattern: RegExp): string | null {
-  const m = text.match(pattern);
-  if (m === null) return null;
-  const value = group(m, 1);
-  return value === "" ? null : value.trim();
 }

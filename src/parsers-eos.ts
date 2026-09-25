@@ -1,5 +1,5 @@
 /**
- * src/parsers-eos.ts — structured parsers for Arista EOS `show` commands.
+ * Structured parsers for Arista EOS `show` commands.
  *
  * EOS runs the verb directly over SSH (no op-mode wrapper, unlike VyOS), so the
  * transport collects a plain transcript and these parsers give it the same

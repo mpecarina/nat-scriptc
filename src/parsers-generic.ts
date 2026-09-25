@@ -1,5 +1,5 @@
 /**
- * src/parsers-generic.ts — the driver-neutral parsers.
+ * The driver-neutral parsers.
  *
  * These back the `generic` and `linux` drivers and act as the fallback for
  * every other driver: key/value extraction, whitespace tables, `ls -l`
@@ -127,8 +127,6 @@ export function parseLs(raw: string, ctx: ParserContext): Json {
   }
   return plainList("entries", entries);
 }
-
-/* ------------------------------ VyOS parsers ------------------------------ */
 
 function vyosProtocol(code: string): string {
   if (code === "K") return "kernel";
@@ -267,8 +265,6 @@ export function parseVyosInterfaces(raw: string, ctx: ParserContext): Json {
   }
   return plainList("interfaces", interfaces);
 }
-
-/* ----------------------------- iproute2 parsers --------------------------- */
 
 /**
  * Parse Linux `ip addr` into the same `{ interfaces: [...] }` shape

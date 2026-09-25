@@ -1,14 +1,13 @@
 /**
- * src/parsers-nxos.ts — structured parsers for Cisco NX-OS `show` output.
+ * Structured parsers for Cisco NX-OS `show` output.
  *
- * These deliberately emit the `ios.*` shapes for the common twin-bearing
- * commands, so a consumer's existing Cisco assembler builds a routed Nexus
- * model without a second near-duplicate builder.
+ * These deliberately emit the `ios.*` shapes for the common commands, so a
+ * consumer's Cisco handling covers Nexus without a second near-duplicate path.
  */
 
 import { Json, jarr, jobj } from "./json.ts";
 import { ParserContext } from "./models.ts";
-import { deviceLines, kindList, kindObject } from "./parse-util.ts";
+import { deviceLines, grab, kindList, kindObject } from "./parse-util.ts";
 import { group, hasGroup } from "./text.ts";
 
 const IP_SOURCE = "\\d{1,3}(?:\\.\\d{1,3}){3}";
@@ -22,13 +21,6 @@ function canonNxosIf(name: string): string {
     .replace(/^Lo(?=\d)/i, "Loopback")
     .replace(/^Po(?=\d)/i, "Port-channel")
     .replace(/^mgmt(?=\d)/i, "mgmt");
-}
-
-/** The first capture group of `pattern` in `text`, trimmed, or "". */
-function grab(text: string, pattern: RegExp): string {
-  const m = text.match(pattern);
-  if (m === null) return "";
-  return group(m, 1).trim();
 }
 
 /** `show version` → identity fields, in the `ios.version` shape. */

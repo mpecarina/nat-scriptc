@@ -1,5 +1,5 @@
 /**
- * src/parse-util.ts — the shared toolkit the driver parsers are built from.
+ * The shared toolkit the driver parsers are built from.
  *
  * Every parser turns a command transcript into a `Json` tree. The helpers here
  * are the pieces they all reuse: dropping login noise, finding a table's dashed
@@ -7,8 +7,8 @@
  * collecting `Key : Value` blocks.
  */
 
-import { Json, jarr, jnull, jnum, jobj, jstr } from "./json.ts";
-import { splitLines } from "./text.ts";
+import { Json, jarr, jobj } from "./json.ts";
+import { group, splitLines } from "./text.ts";
 
 /**
  * Non-empty, right-trimmed lines with the login banner and ssh's own
@@ -76,7 +76,7 @@ export function kvPairs(lines: string[]): Json {
   return out;
 }
 
-/** `"Yes"`/`"No"` → a boolean node; anything else → absent. */
+/** `"Yes"`/`"No"` → a boolean; anything else → null. */
 export function boolFieldFrom(fields: Json, key: string): boolean | null {
   const value = fields.str(key, "");
   if (/^yes$/i.test(value)) return true;
@@ -86,10 +86,7 @@ export function boolFieldFrom(fields: Json, key: string): boolean | null {
 
 /** A numeric field, or null when it is missing or not a number. */
 export function numFieldFrom(fields: Json, key: string): number | null {
-  const value = fields.str(key, "").trim();
-  if (value === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return toNumOrNull(fields.str(key, ""));
 }
 
 /** A finite number, or null. */
@@ -147,19 +144,9 @@ export function plainList(name: string, items: Json[]): Json {
   return node;
 }
 
-/** A string array node. */
-export function stringList(values: string[]): Json {
-  const list = jarr();
-  for (const value of values) list.push(jstr(value));
-  return list;
-}
-
-/** The literal `null` node, for fields that are reported but absent. */
-export function nullNode(): Json {
-  return jnull();
-}
-
-/** A number node. */
-export function numberNode(value: number): Json {
-  return jnum(value);
+/** The first capture group of `pattern` in `text`, trimmed, or "". */
+export function grab(text: string, pattern: RegExp): string {
+  const m = text.match(pattern);
+  if (m === null) return "";
+  return group(m, 1).trim();
 }

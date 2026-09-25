@@ -69,8 +69,6 @@ describe("VyOS op-mode wrapping", () => {
   });
 });
 
-/* ------------------------- end-to-end transport paths ---------------------- */
-
 class Lab {
   home: string;
   replies: string;
@@ -138,17 +136,6 @@ const CONFIG = [
 ].join("\n") + "\n";
 
 describe("transport paths", () => {
-  test("legacy Driver metadata keeps the original config and its OpenSSH semantics", () => {
-    const config = CONFIG.replace("#nat-driver ios", "Driver ios");
-    const lab = new Lab(config);
-    lab.reply("uptime", "up 3 days\n");
-    const result = lab.run(["--ssh-config", lab.config, "run", "router1", "--no-ios-shell", "-c", "uptime"], {});
-    assert.equal(result.status, 0, result.stderr);
-    const argv = lab.argv();
-    assert.ok(argv.includes(`-F ${lab.config}`), "ssh reads the source config rather than a flattened copy");
-    assert.ok(argv.includes("IgnoreUnknown=Driver,NatOs,Nat-Driver,Nat-Os"));
-  });
-
   test("a configured ProxyJump stays in ssh_config", () => {
     const lab = new Lab(CONFIG);
     lab.reply("show version", "Version 1.2.3\n");

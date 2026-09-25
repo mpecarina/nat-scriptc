@@ -1,7 +1,3 @@
-/**
- * src/usage.ts — the help text.
- */
-
 export const VERSION = "0.1.0";
 
 export const USAGE = `nat ${VERSION} — Network Automation Toolkit
@@ -159,8 +155,7 @@ Usage:
 
 Secrets live in the macOS keychain (\`security\`) or libsecret
 (\`secret-tool\`); without either, in a 0600 file under nat's config directory
-with a warning when stored. Existing Bun.secrets entries use the same keys.
-\`nat doctor\` reports which one this host uses.`;
+with a warning when stored. \`nat doctor\` reports which one this host uses.`;
 
 export const HELP_DOCTOR = `nat doctor — report the environment nat is running in
 

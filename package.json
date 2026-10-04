@@ -11,7 +11,16 @@
   "engines": {
     "node": ">=24.0.0"
   },
+  "packageManager": "yarn@1.22.22",
+  "devEngines": {
+    "packageManager": {
+      "name": "yarn",
+      "version": "1.22.22",
+      "onFail": "error"
+    }
+  },
   "scripts": {
+    "preinstall": "node -e \"if (!/^yarn\\//.test(process.env.npm_config_user_agent || '')) { console.error('nat-scriptc is a Yarn 1 project; install with: yarn'); process.exit(1); }\"",
     "start": "node cli/nat.ts",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",

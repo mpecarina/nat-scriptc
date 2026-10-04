@@ -1,10 +1,10 @@
 NODE ?= node
-NPM  ?= npm
+YARN ?= yarn
 
 .PHONY: install run test typecheck coverage build build-cross emit emit-c build-c clean
 
 install:
-	$(NPM) install
+	$(YARN) install --frozen-lockfile
 
 run:
 	$(NODE) cli/nat.ts $(ARGS)
@@ -15,12 +15,12 @@ test:
 # The compilable surface is narrower than Node's, so the typecheck runs against
 # scriptc's own declarations: what passes here is what the compiler accepts.
 typecheck:
-	$(NPM) run typecheck
+	$(YARN) typecheck
 
 # How much of the program compiles statically, and a coded diagnostic for
 # anything that does not.
 coverage:
-	$(NPM) run coverage
+	$(YARN) coverage
 
 # Builds the pinned LLVM shipping executable at dist/nat. Use `make emit-c`
 # separately when you want to refresh the complete C inspection intermediary.

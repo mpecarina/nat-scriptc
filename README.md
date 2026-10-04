@@ -32,22 +32,28 @@ dist/nat: Mach-O 64-bit executable arm64
 
 An OpenSSH client (`ssh`, 8.4 or newer) and standard POSIX userland (`/bin/sh`, `mkfifo` and
 `stty`) — preinstalled on macOS and mainstream Linux. There is no language VM
-or bundled JavaScript engine. Development additionally needs Node 24+, and
-clang for the C inspection lane (`npm run emit:c`). The sources run directly
+or bundled JavaScript engine. Development additionally needs Node 24+, Yarn 1
+(classic; `corepack enable` picks up the pinned version), and clang for the C
+inspection lane (`yarn emit:c`). The sources run directly
 under Node's type stripping, which is how the source-side tests run.
 
 ## Install
 
 ```sh
-npm install          # dev dependencies (scriptc, typescript)
+yarn install         # dev dependencies (scriptc, typescript)
 make build           # -> dist/nat
 ./dist/nat --version
 ```
 
-This workspace is intentionally marked `private`: publishing it as one npm
-package would silently bundle only the build host's `dist/nat`. Distribute the
-named `dist/nat-<target>` artifacts instead; the local `bin` entry remains handy
-for `npm link` after `make build`.
+This workspace is intentionally marked `private`: publishing it as one package
+would silently bundle only the build host's `dist/nat`. Distribute the named
+`dist/nat-<target>` artifacts instead; the local `bin` entry remains handy for
+`yarn link` after `make build`.
+
+Yarn 1 is the only supported package manager. `package.json` pins it through
+`packageManager` and `devEngines`, which npm and pnpm refuse up front, and a
+`preinstall` guard fails any other client such as bun. Other lockfiles are
+gitignored.
 
 Cross-compile for other platforms with [zig](https://ziglang.org) installed:
 
@@ -79,7 +85,7 @@ pinned runtime:
 1. scriptc's readable C backend → `build/c/nat.c` and `build/c/nat`
 2. the pinned LLVM backend → the shipping `dist/nat`
 
-`npm run build` produces the shipping one. `npm run emit:c` produces the C one
+`yarn build` produces the shipping one. `yarn emit:c` produces the C one
 on demand; it compiles the program a second time, so it is not part of every
 build.
 
@@ -99,8 +105,8 @@ build/c/source-manifest.json          versions + TypeScript/native SHA-256 hashe
 build/c/nat                           independently executable C-backend binary
 ```
 
-Generate only this inspection tree with `npm run emit:c`; generate C, textual
-LLVM IR and scriptc's typed IR with `npm run emit`. `build/` is gitignored and
+Generate only this inspection tree with `yarn emit:c`; generate C, textual
+LLVM IR and scriptc's typed IR with `yarn emit`. `build/` is gitignored and
 can always be regenerated from the pinned lockfile.
 
 The production executable is generated directly by the LLVM backend, not by
@@ -114,9 +120,9 @@ contains recoverable source text.
 The snapshot is a standalone C project; nothing below runs scriptc.
 
 ```sh
-npm run build:c                   # host compiler
-npm run build:c -- --cc "zig cc"  # zig's bundled clang instead
-cd build/c && make                # or drive the snapshot's own Makefile
+yarn build:c                   # host compiler
+yarn build:c --cc "zig cc"     # zig's bundled clang instead
+cd build/c && make             # or drive the snapshot's own Makefile
 cd build/c && make CC="zig cc"
 ```
 
@@ -124,7 +130,7 @@ cd build/c && make CC="zig cc"
 the `.c` it names is one copy away:
 
 ```console
-$ npm run build:c
+$ yarn build:c
 # 27 translation units from nat.c
 cd build/c
 cc -std=c11 -pthread -O2 … -Iruntime/src nat.c runtime/src/scr_array.c … -o nat-rebuilt
@@ -159,10 +165,10 @@ Linux program however you point its Makefile. Generate that platform's own C
 project instead — zig supplies the sysroots:
 
 ```console
-$ npm run emit:c -- --target x86_64-linux-gnu.2.36
+$ yarn emit:c --target x86_64-linux-gnu.2.36
 emitting readable C -> build/c-x86_64-linux-gnu.2.36/nat.c
 
-$ npm run build:c -- --target x86_64-linux-gnu.2.36
+$ yarn build:c --target x86_64-linux-gnu.2.36
 # target: x86_64-linux-gnu.2.36
 built build/c-x86_64-linux-gnu.2.36/nat-rebuilt  5.4M
 
@@ -487,7 +493,7 @@ shared writer lock. `--no-store` skips the disk entirely.
 
 ## Other compiler intermediates
 
-`npm run emit` writes all three: the [complete C
+`yarn emit` writes all three: the [complete C
 intermediary](#inspect-the-complete-c-intermediary), textual LLVM IR under
 `build/llvm/`, and a standalone typed-IR lane under `build/ir/`. `emit:c`,
 `emit:llvm` and `emit:ir` select one kind. Each lane has an executable beside
@@ -496,19 +502,19 @@ its source artifact.
 Generated C symbols retain the TypeScript function name and module id, so they
 are easy to grep. Use `build/c/typescript-module-map.json` to map that module id
 back to the original file. When `build/c/nat` exists and its source manifest
-still matches the TypeScript inputs, `npm test` automatically runs the native
+still matches the TypeScript inputs, `yarn test` automatically runs the native
 differential against both it and `dist/nat`; a stale snapshot is skipped.
 
 ## Development
 
 ```sh
-npm install
-npm test          # infra-free unit, integration and native differential tests
-npm run typecheck # against scriptc's own declarations — what passes, compiles
-npm run coverage  # how much compiles statically, and why not
-npm run build     # -> pinned-LLVM dist/nat
-npm run emit      # -> build/{c,llvm,ir}/  every compiler representation
-npm run build:c   # rebuild from build/c with an ordinary C compiler
+yarn install
+yarn test       # infra-free unit, integration and native differential tests
+yarn typecheck  # against scriptc's own declarations — what passes, compiles
+yarn coverage   # how much compiles statically, and why not
+yarn build      # -> pinned-LLVM dist/nat
+yarn emit       # -> build/{c,llvm,ir}/  every compiler representation
+yarn build:c    # rebuild from build/c with an ordinary C compiler
 ```
 
 Tests are infra-free. `test/fixtures/fake-ssh` is a POSIX-shell stand-in for the
@@ -524,8 +530,8 @@ when `dist/nat` has not been built; `NAT_BINARY` can select another primary
 binary.
 
 The project deliberately has no `@types/node`. scriptc typechecks in its own type
-world (the `es2025` lib plus its own ambient declarations), so `npm run
-typecheck` reads the same declarations the compiler does and tells you about an
+world (the `es2025` lib plus its own ambient declarations), so `yarn typecheck`
+reads the same declarations the compiler does and tells you about an
 unsupported API before the compiler does.
 
 ## License

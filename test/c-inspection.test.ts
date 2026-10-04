@@ -38,15 +38,15 @@ function sha256(path: string): string {
 /**
  * `build/c` is generated and goes stale on any source edit, so a missing or
  * stale snapshot skips rather than fails. Release/CI jobs regenerate it with
- * `npm run emit:c` before the native differential.
+ * `yarn emit:c` before the native differential.
  */
 function skipReason(): string | false {
-  if (!existsSync(MANIFEST)) return "build/c not generated — run `npm run emit:c`";
+  if (!existsSync(MANIFEST)) return "build/c not generated — run `yarn emit:c`";
   const manifest = JSON.parse(readFileSync(MANIFEST, "utf8")) as SourceManifest;
   for (const entry of manifest.inputs) {
     const path = join(ROOT, entry.file);
     if (!existsSync(path) || sha256(path) !== entry.sha256) {
-      return `build/c predates a change to ${entry.file} — run \`npm run emit:c\``;
+      return `build/c predates a change to ${entry.file} — run \`yarn emit:c\``;
     }
   }
   return false;

@@ -6,11 +6,11 @@
  *   node scripts/build-c.mjs [--target <triple>] [--cc "<compiler>"]
  *                            [--dir <snapshot>] [-o <path>] [--run]
  *
- * `npm run emit:c` writes the self-contained C project (see build/c/README.md).
+ * `yarn emit:c` writes the self-contained C project (see build/c/README.md).
  *
- *   npm run build:c                          # host C, host compiler
- *   npm run build:c -- --cc "zig cc"         # host C, zig's bundled clang
- *   npm run build:c -- --target x86_64-linux-gnu.2.36   # Linux C, via zig
+ *   yarn build:c                                # host C, host compiler
+ *   yarn build:c --cc "zig cc"                  # host C, zig's bundled clang
+ *   yarn build:c --target x86_64-linux-gnu.2.36 # Linux C, via zig
  *
  * The compiler command is printed before it runs. `cd build/c && make` does the
  * same thing through the generated Makefile.
@@ -59,7 +59,7 @@ if (dir === "") {
 
 const manifestPath = join(dir, "source-manifest.json");
 if (!existsSync(manifestPath)) {
-  const how = target === "" ? "npm run emit:c" : `npm run emit:c -- --target ${target}`;
+  const how = target === "" ? "yarn emit:c" : `yarn emit:c --target ${target}`;
   console.error(`nat build:c: no C snapshot in ${dir}. Generate it first:\n\n    ${how}\n`);
   process.exit(1);
 }

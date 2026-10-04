@@ -5,7 +5,7 @@
  *   node scripts/build.mjs [-o dist/nat] [--dev]
  *
  * Pinned to the LLVM backend, so a tier regression fails loudly instead of
- * silently shipping the C lane's output. `npm run emit:c` builds the readable
+ * silently shipping the C lane's output. `yarn emit:c` builds the readable
  * C intermediary separately.
  */
 
@@ -45,7 +45,7 @@ const result = spawnSync(
 );
 
 if (result.error) {
-  console.error(`nat build: could not run scriptc (${result.error.message}). Run \`npm install\` first.`);
+  console.error(`nat build: could not run scriptc (${result.error.message}). Run \`yarn install\` first.`);
   process.exit(1);
 }
 process.exit(result.status ?? 1);

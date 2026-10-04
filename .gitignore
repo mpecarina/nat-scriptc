@@ -6,3 +6,8 @@ data/
 .DS_Store
 *.log
 *.o
+package-lock.json
+npm-shrinkwrap.json
+pnpm-lock.yaml
+bun.lock
+bun.lockb

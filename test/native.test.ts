@@ -16,8 +16,8 @@ const FAKE_SSH = join(HERE, "fixtures", "fake-ssh");
 
 /**
  * Every available compiled lane and the same sources under Node must agree byte
- * for byte. `npm run build` produces the shipping LLVM binary and `npm run
- * emit:c` produces the optional C inspection executable; without dist/nat
+ * for byte. `yarn build` produces the shipping LLVM binary and `yarn emit:c`
+ * produces the optional C inspection executable; without dist/nat
  * these checks skip so a fresh clone's source-only test remains useful.
  */
 const available = existsSync(BINARY);

@@ -42,6 +42,8 @@ import { arch, platform, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { hostEnv, hostTarget } from "./toolchain.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRY = join(ROOT, "cli", "nat.ts");
 const SCRIPTC = join(ROOT, "node_modules", ".bin", "scriptc");
@@ -458,13 +460,17 @@ clean:
 function buildCWithTrace(dir, flags) {
   const realClang = executable("clang");
   const realZig = executable("zig");
-  const cross = target !== "";
+  // An explicit --target gets its own directory. A host that cannot build
+  // natively (see toolchain.mjs) goes through zig as well, but that is still
+  // the host's own C, so it stays in build/c.
+  const triple = target !== "" ? target : hostTarget();
+  const cross = triple !== "";
   if (!cross && realClang === "") {
     console.error("nat emit: clang is required for the C inspection build");
     return { status: 1, error: null };
   }
   if (cross && realZig === "") {
-    console.error(`nat emit: zig is required to emit C for ${target} (brew install zig)`);
+    console.error(`nat emit: zig is required to emit C for ${triple} (https://ziglang.org/download)`);
     return { status: 1, error: null };
   }
 
@@ -489,7 +495,7 @@ esac
     ...process.env,
     PATH: `${temp}:${process.env.PATH ?? ""}`,
     SCRIPTC_CC: cross ? "zigcc" : "clang",
-    SCRIPTC_TARGET: cross ? target : "",
+    SCRIPTC_TARGET: triple,
     SCRIPTC_NO_CACHE: "1",
     NAT_SCRIPTC_CC_TRACE: traceDir,
     NAT_SCRIPTC_REAL_CLANG: realClang,
@@ -523,7 +529,7 @@ for (const kind of kinds) {
     : spawnSync(
         SCRIPTC,
         ["build", ENTRY, "-o", join(dir, "nat"), "--optimization", optimization, ...spec.flags],
-        { stdio: ["ignore", "ignore", "inherit"], cwd: ROOT },
+        { stdio: ["ignore", "ignore", "inherit"], cwd: ROOT, env: hostEnv() },
       );
   if (result.error) {
     console.error(`nat emit: could not run scriptc (${result.error.message}). Run \`yarn install\` first.`);

@@ -67,6 +67,11 @@ node cli/nat.ts --help          # CLI surface; see examples/
 - **Do not add `@types/node`.** Its presence changes which overloads the compiler
   sees and breaks the build; the typecheck deliberately uses scriptc's own
   declarations.
+- **A Linux host without clang, or with glibc older than 2.36, builds through
+  zig.** The runtime needs `arc4random_buf` (glibc 2.36+), so no native build is
+  possible there; `scripts/toolchain.mjs` points `yarn build`, `yarn emit` and
+  `yarn build:c` at zig's musl sysroot, and `dist/nat` / `build/c/nat` come out
+  as static musl executables.
 - **No `NaN` literals.** The IR serializer refuses to write one, which breaks
   `yarn emit:ir`. Use `number | null` for "no value", as
   `parseEosIpInterfaceBrief` does for its optional MTU column.

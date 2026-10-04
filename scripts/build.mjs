@@ -14,6 +14,8 @@ import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { hostEnv } from "./toolchain.mjs";
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRY = join(ROOT, "cli", "nat.ts");
 const SCRIPTC = join(ROOT, "node_modules", ".bin", "scriptc");
@@ -35,12 +37,18 @@ for (let i = 0; i < argv.length; i += 1) {
 
 mkdirSync(dirname(out), { recursive: true });
 
+const env = hostEnv();
+if (env !== process.env) {
+  console.log(`nat build: no host clang with glibc 2.36+; building ${env.SCRIPTC_TARGET} through zig`);
+}
+
 const result = spawnSync(
   SCRIPTC,
   ["build", ENTRY, "-o", out, "--backend", "llvm", "--optimization", optimization, "--no-keep-c"],
   {
     stdio: "inherit",
     cwd: ROOT,
+    env,
   },
 );
 

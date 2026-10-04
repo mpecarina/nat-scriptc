@@ -33,8 +33,9 @@ dist/nat: Mach-O 64-bit executable arm64
 An OpenSSH client (`ssh`, 8.4 or newer) and standard POSIX userland (`/bin/sh`, `mkfifo` and
 `stty`) — preinstalled on macOS and mainstream Linux. There is no language VM
 or bundled JavaScript engine. Development additionally needs Node 24+, Yarn 1
-(classic; `corepack enable` picks up the pinned version), and clang for the C
-inspection lane (`yarn emit:c`). The sources run directly
+(classic; `corepack enable` picks up the pinned version), and clang for the
+native builds (`make build`, `yarn emit:c`) — or zig on a Linux host that
+cannot use it, as noted under Install. The sources run directly
 under Node's type stripping, which is how the source-side tests run.
 
 ## Install
@@ -44,6 +45,15 @@ yarn install         # dev dependencies (scriptc, typescript)
 make build           # -> dist/nat
 ./dist/nat --version
 ```
+
+**Linux build hosts.** The runtime calls `arc4random_buf`, which glibc gained
+in 2.36. A host with an older glibc (Ubuntu 22.04, Debian 11, RHEL 9) therefore
+cannot build natively with any compiler, and neither can one without clang.
+There, `make build`, `yarn emit` and `yarn build:c` build through
+[zig](https://ziglang.org/download) and its musl sysroot instead — install zig
+and nothing else changes. `dist/nat` is then the static `linux-<arch>-musl`
+executable from the table below, and `build/c` is that same musl C project with
+a Makefile that already uses `zig cc`.
 
 This workspace is intentionally marked `private`: publishing it as one package
 would silently bundle only the build host's `dist/nat`. Distribute the named

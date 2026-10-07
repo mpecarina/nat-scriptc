@@ -2,7 +2,7 @@
  * The host inventory.
  *
  * Two sources produce the same shape: the user's ssh client config, and a JSON
- * lab inventory (the schema vmlab's `/api/labs/:id/inventory.json` emits). The
+ * lab inventory (the schema the lab's `/api/labs/:id/inventory.json` endpoint emits). The
  * JSON source is translated into a synthetic ssh config so selection,
  * resolution and the ssh transport all work against one representation — and so
  * the generated file can be handed to `ssh -F` unchanged.
@@ -212,7 +212,7 @@ export function loadJsonInventory(filePath: string): Inventory {
 
   const devices = root.kind === "obj" ? root.get("devices") : null;
   if (devices === null || devices.kind !== "arr") {
-    throw new InventoryError("inventory file must be an object with a `devices` array (vmlab inventory schema)");
+    throw new InventoryError("inventory file must be an object with a `devices` array (lab inventory schema)");
   }
 
   const blocks: string[] = [];

@@ -7,7 +7,7 @@
  * structure), so nat models it explicitly: a `Json` node is a tagged tree that
  * every parser builds and one serializer renders.
  *
- * The tree is also the reader for open-shaped INPUT — vmlab JSON inventories
+ * The tree is also the reader for open-shaped INPUT — lab JSON inventories
  * and declarative parser packs — where a checked `JSON.parse(...) as T` cast
  * would reject a file that merely carries an unexpected extra field.
  */

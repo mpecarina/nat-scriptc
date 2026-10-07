@@ -125,7 +125,7 @@ describe("loadJsonInventory", () => {
   test("translates devices into a synthetic ssh config", () => {
     const path = writeInventory(
       JSON.stringify({
-        source: "vmlab",
+        source: "lab",
         devices: [
           { id: "leaf1", mgmtIp: "10.0.0.1", sshUser: "admin", sshPort: 2222, driver: "sonic", password: "s3cret" },
           { id: "web1", mgmtIps: ["10.0.1.1"], sshIdentityFile: "~/.ssh/id_lab" },
